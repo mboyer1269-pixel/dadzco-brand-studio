@@ -14,16 +14,371 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      collection_items: {
+        Row: {
+          collection_id: string
+          cost: number | null
+          created_at: string
+          design_id: string
+          id: string
+          margin: number | null
+          personalization: boolean | null
+          position: number | null
+          retail_price: number | null
+          sku: string | null
+        }
+        Insert: {
+          collection_id: string
+          cost?: number | null
+          created_at?: string
+          design_id: string
+          id?: string
+          margin?: number | null
+          personalization?: boolean | null
+          position?: number | null
+          retail_price?: number | null
+          sku?: string | null
+        }
+        Update: {
+          collection_id?: string
+          cost?: number | null
+          created_at?: string
+          design_id?: string
+          id?: string
+          margin?: number | null
+          personalization?: boolean | null
+          position?: number | null
+          retail_price?: number | null
+          sku?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "collection_items_collection_id_fkey"
+            columns: ["collection_id"]
+            isOneToOne: false
+            referencedRelation: "collections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "collection_items_design_id_fkey"
+            columns: ["design_id"]
+            isOneToOne: false
+            referencedRelation: "designs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      collections: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          metadata: Json | null
+          name: string
+          season: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          metadata?: Json | null
+          name: string
+          season?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          metadata?: Json | null
+          name?: string
+          season?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      design_tags: {
+        Row: {
+          design_id: string
+          tag_id: string
+        }
+        Insert: {
+          design_id: string
+          tag_id: string
+        }
+        Update: {
+          design_id?: string
+          tag_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "design_tags_design_id_fkey"
+            columns: ["design_id"]
+            isOneToOne: false
+            referencedRelation: "designs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "design_tags_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "tags"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      design_versions: {
+        Row: {
+          created_at: string
+          design_id: string
+          id: string
+          image_url: string | null
+          metadata: Json | null
+          prompt: string | null
+          version_number: number
+        }
+        Insert: {
+          created_at?: string
+          design_id: string
+          id?: string
+          image_url?: string | null
+          metadata?: Json | null
+          prompt?: string | null
+          version_number?: number
+        }
+        Update: {
+          created_at?: string
+          design_id?: string
+          id?: string
+          image_url?: string | null
+          metadata?: Json | null
+          prompt?: string | null
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "design_versions_design_id_fkey"
+            columns: ["design_id"]
+            isOneToOne: false
+            referencedRelation: "designs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      designs: {
+        Row: {
+          created_at: string
+          id: string
+          image_url: string | null
+          metadata: Json | null
+          mode: string
+          negative_space_pct: number | null
+          palette_locked: boolean | null
+          print_type: string | null
+          product_type: string | null
+          prompt: string | null
+          seed: number | null
+          status: string
+          style_strength: number | null
+          thumbnail_url: string | null
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          metadata?: Json | null
+          mode?: string
+          negative_space_pct?: number | null
+          palette_locked?: boolean | null
+          print_type?: string | null
+          product_type?: string | null
+          prompt?: string | null
+          seed?: number | null
+          status?: string
+          style_strength?: number | null
+          thumbnail_url?: string | null
+          title?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          metadata?: Json | null
+          mode?: string
+          negative_space_pct?: number | null
+          palette_locked?: boolean | null
+          print_type?: string | null
+          product_type?: string | null
+          prompt?: string | null
+          seed?: number | null
+          status?: string
+          style_strength?: number | null
+          thumbnail_url?: string | null
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      exports: {
+        Row: {
+          created_at: string
+          export_type: string
+          file_url: string | null
+          id: string
+          metadata: Json | null
+          name: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          export_type: string
+          file_url?: string | null
+          id?: string
+          metadata?: Json | null
+          name: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          export_type?: string
+          file_url?: string | null
+          id?: string
+          metadata?: Json | null
+          name?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      stories: {
+        Row: {
+          collection_id: string | null
+          created_at: string
+          design_id: string | null
+          hero_image_brief: string | null
+          id: string
+          instagram_caption: string | null
+          mythology: string | null
+          punchlines: string[] | null
+          shopify_description: string | null
+          status: string
+          tiktok_caption: string | null
+          updated_at: string
+        }
+        Insert: {
+          collection_id?: string | null
+          created_at?: string
+          design_id?: string | null
+          hero_image_brief?: string | null
+          id?: string
+          instagram_caption?: string | null
+          mythology?: string | null
+          punchlines?: string[] | null
+          shopify_description?: string | null
+          status?: string
+          tiktok_caption?: string | null
+          updated_at?: string
+        }
+        Update: {
+          collection_id?: string | null
+          created_at?: string
+          design_id?: string | null
+          hero_image_brief?: string | null
+          id?: string
+          instagram_caption?: string | null
+          mythology?: string | null
+          punchlines?: string[] | null
+          shopify_description?: string | null
+          status?: string
+          tiktok_caption?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stories_collection_id_fkey"
+            columns: ["collection_id"]
+            isOneToOne: false
+            referencedRelation: "collections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stories_design_id_fkey"
+            columns: ["design_id"]
+            isOneToOne: false
+            referencedRelation: "designs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tags: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "user"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +505,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "user"],
+    },
   },
 } as const
