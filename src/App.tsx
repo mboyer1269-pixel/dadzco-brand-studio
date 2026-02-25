@@ -9,6 +9,7 @@ import Index from "./pages/Index";
 import Login from "./pages/Login";
 import Generate from "./pages/Generate";
 import Collections from "./pages/Collections";
+import CollectionWizard from "./pages/CollectionWizard";
 import Library from "./pages/Library";
 import Storytelling from "./pages/Storytelling";
 import Exports from "./pages/Exports";
@@ -63,6 +64,7 @@ const App = () => (
               <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
               <Route path="/generate" element={<ProtectedRoute><Generate /></ProtectedRoute>} />
               <Route path="/collections" element={<ProtectedRoute><Collections /></ProtectedRoute>} />
+              <Route path="/collections/new" element={<ProtectedRoute><CollectionWizard /></ProtectedRoute>} />
               <Route path="/library" element={<ProtectedRoute><Library /></ProtectedRoute>} />
               <Route path="/storytelling" element={<ProtectedRoute><Storytelling /></ProtectedRoute>} />
               <Route path="/exports" element={<ProtectedRoute><Exports /></ProtectedRoute>} />
