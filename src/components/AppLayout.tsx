@@ -2,6 +2,7 @@ import { ReactNode } from "react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { useAuth } from "@/lib/auth";
+import { LeonardoCredits } from "@/components/LeonardoCredits";
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const { user } = useAuth();
@@ -19,7 +20,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
               </span>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-xs text-muted-foreground font-body">
+              <LeonardoCredits />
+              <span className="text-xs text-muted-foreground font-body hidden md:inline">
                 {user?.email}
               </span>
               <div className="h-7 w-7 rounded-full bg-lavande/20 flex items-center justify-center transition-colors hover:bg-lavande/30">

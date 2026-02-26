@@ -32,11 +32,24 @@ const Generate = () => {
 
   const handleGenerate = async () => {
     setIsGenerating(true);
-    // Mock generation delay
-    setTimeout(() => {
+    try {
+      const { data, error } = await (await import("@/integrations/supabase/client")).supabase.functions.invoke("generate-mockup", {
+        body: {
+          prompt: `${mode === "quiet" ? "Minimalist luxury" : "Witty premium humor"} ${productType} ${printType} design. ${prompt}. Negative space ${negativeSpace[0]}%.`,
+          skuName: prompt.slice(0, 40),
+        },
+      });
+      if (error) throw error;
+      if (data?.imageUrl) {
+        setGeneratedImage(data.imageUrl);
+      }
+    } catch (e: any) {
+      console.error("Generate error:", e);
+    } finally {
       setIsGenerating(false);
-    }, 3000);
+    }
   };
+  const [generatedImage, setGeneratedImage] = useState<string | null>(null);
 
   return (
     <AppLayout>
@@ -190,17 +203,17 @@ const Generate = () => {
             <Button
               onClick={handleGenerate}
               disabled={isGenerating || !prompt.trim()}
-              className="w-full font-body text-xs tracking-wider uppercase h-12"
+              className="w-full font-body text-xs tracking-wider uppercase h-12 btn-glow"
             >
               {isGenerating ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  Generating…
+                  Leonardo génère…
                 </>
               ) : (
                 <>
                   <Sparkles className="h-4 w-4 mr-2" />
-                  Generate Design
+                  Generate with Leo
                 </>
               )}
             </Button>
@@ -213,13 +226,23 @@ const Generate = () => {
             {/* Preview area */}
             <Card className="border-border border-dashed">
               <CardContent className="p-8 text-center min-h-[300px] flex flex-col items-center justify-center">
-                <ImageIcon className="h-10 w-10 text-muted-foreground mb-3" />
-                <p className="text-xs text-muted-foreground font-body">
-                  Preview will appear here
-                </p>
-                <p className="text-[10px] text-muted-foreground font-body mt-1">
-                  4500 × 5400px · PNG · Transparent
-                </p>
+                {generatedImage ? (
+                  <img
+                    src={generatedImage}
+                    alt="Generated design"
+                    className="w-full h-auto max-h-80 object-contain rounded-lg"
+                  />
+                ) : (
+                  <>
+                    <ImageIcon className="h-10 w-10 text-muted-foreground mb-3" />
+                    <p className="text-xs text-muted-foreground font-body">
+                      Preview will appear here
+                    </p>
+                    <p className="text-[10px] text-muted-foreground font-body mt-1">
+                      Leonardo AI · Flux · High Quality
+                    </p>
+                  </>
+                )}
               </CardContent>
             </Card>
 
