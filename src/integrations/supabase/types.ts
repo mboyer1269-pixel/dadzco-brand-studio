@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      brand_files: {
+        Row: {
+          created_at: string
+          file_name: string
+          file_size: number
+          file_type: string
+          id: string
+          storage_path: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          file_name: string
+          file_size?: number
+          file_type?: string
+          id?: string
+          storage_path: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          file_name?: string
+          file_size?: number
+          file_type?: string
+          id?: string
+          storage_path?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       collection_items: {
         Row: {
           collection_id: string
