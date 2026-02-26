@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import StrategicAlerts from "@/components/StrategicAlerts";
 
 const quickActions = [
   { label: "New Design", icon: Sparkles, to: "/generate", desc: "Generate with AI", hint: "AI-powered brand designs" },
@@ -99,6 +100,11 @@ const Dashboard = () => {
               </CardContent>
             </Card>
           ))}
+        </section>
+
+        {/* Strategic Alerts */}
+        <section>
+          <StrategicAlerts compact />
         </section>
 
         {/* Recent Designs — Sample Data */}
