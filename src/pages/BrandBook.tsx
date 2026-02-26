@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Upload, FileText, Palette, Shield, CheckCircle2, AlertTriangle, BookOpen, Lock, Eye, Trash2, Loader2, Sparkles, Type, Ban } from "lucide-react";
+import { Upload, FileText, Palette, Shield, CheckCircle2, AlertTriangle, BookOpen, Lock, Eye, Trash2, Loader2, Sparkles, Type, Ban, RotateCcw } from "lucide-react";
 import { FileThumbnail, FilePreviewButton } from "@/components/brand/FilePreview";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -112,6 +112,7 @@ export default function BrandBook() {
   const [extractedRules, setExtractedRules] = useState<BrandRules[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const progressRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [failedFileId, setFailedFileId] = useState<string | null>(null);
 
   const fetchFiles = useCallback(async () => {
     try {
@@ -188,6 +189,7 @@ export default function BrandBook() {
 
   const extractBrandRules = async (file: BrandFile) => {
     setExtracting(file.id);
+    setFailedFileId(null);
     startProgressSimulation();
     try {
       const { data, error } = await supabase.functions.invoke("extract-brand-rules", {
@@ -206,6 +208,7 @@ export default function BrandBook() {
     } catch (e: any) {
       console.error("Extraction error:", e);
       stopProgressSimulation(false);
+      setFailedFileId(file.id);
       toast.error(e.message || "Erreur lors de l'extraction des règles.");
     } finally {
       setExtracting(null);
@@ -422,12 +425,14 @@ export default function BrandBook() {
             </Card>
 
             {/* DNA Lock Status */}
-            <Card className={`card-lift ${extracting ? "border-accent/50 animate-pulse-subtle" : dnaLocked ? "border-accent/30" : "border-destructive/30"}`}>
+            <Card className={`card-lift ${extracting ? "border-accent/50 animate-pulse-subtle" : failedFileId ? "border-destructive/40" : dnaLocked ? "border-accent/30" : "border-destructive/30"}`}>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     {extracting ? (
                       <Loader2 className="h-4 w-4 text-accent animate-spin" />
+                    ) : failedFileId ? (
+                      <AlertTriangle className="h-4 w-4 text-destructive" />
                     ) : dnaLocked ? (
                       <Lock className="h-4 w-4 text-accent" />
                     ) : (
@@ -436,23 +441,39 @@ export default function BrandBook() {
                     <span className="text-xs font-body font-medium">ADN Status</span>
                   </div>
                   <Badge
-                    variant={extracting ? "outline" : dnaLocked ? "default" : "destructive"}
+                    variant={extracting ? "outline" : failedFileId ? "destructive" : dnaLocked ? "default" : "destructive"}
                     className={`text-[9px] ${extracting ? "border-accent/50 text-accent" : ""}`}
                   >
-                    {extracting ? "EXTRACTION IA…" : dnaLocked ? "VERROUILLÉ IA" : "EN ATTENTE"}
+                    {extracting ? "EXTRACTION IA…" : failedFileId ? "ÉCHEC" : dnaLocked ? "VERROUILLÉ IA" : "EN ATTENTE"}
                   </Badge>
                 </div>
                 <Progress
-                  value={extracting ? extractionProgress : dnaLocked ? 100 : 20}
+                  value={extracting ? extractionProgress : failedFileId ? 0 : dnaLocked ? 100 : 20}
                   className="h-1.5 mb-2"
                 />
                 <p className="text-[10px] text-muted-foreground font-body">
                   {extracting
                     ? `${extractionStep} (${extractionProgress}%)`
-                    : dnaLocked
-                      ? `${extractedRules.length} fichier(s) analysé(s). ADN auto-extrait et verrouillé.`
-                      : "Uploadez un Brand Book PDF pour activer l'extraction IA automatique."}
+                    : failedFileId
+                      ? "L'extraction IA a échoué. Vous pouvez réessayer sans re-uploader."
+                      : dnaLocked
+                        ? `${extractedRules.length} fichier(s) analysé(s). ADN auto-extrait et verrouillé.`
+                        : "Uploadez un Brand Book PDF pour activer l'extraction IA automatique."}
                 </p>
+                {failedFileId && !extracting && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-3 w-full text-xs font-body gap-2 border-destructive/30 hover:bg-destructive/10 text-destructive"
+                    onClick={() => {
+                      const failedFile = files.find((f) => f.id === failedFileId);
+                      if (failedFile) extractBrandRules(failedFile);
+                    }}
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    Réessayer l'extraction IA
+                  </Button>
+                )}
               </CardContent>
             </Card>
           </div>
