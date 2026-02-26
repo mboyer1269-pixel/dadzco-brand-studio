@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Upload, FileText, Palette, Shield, CheckCircle2, AlertTriangle, BookOpen, Lock, Eye } from "lucide-react";
+import { Upload, FileText, Palette, Shield, CheckCircle2, AlertTriangle, BookOpen, Lock, Eye, Trash2, Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 const BRAND_DNA = {
   quiet: {
@@ -42,39 +44,120 @@ const BRAND_DNA = {
 
 const FORBIDDEN_KEYWORDS = ["cartoon", "cute", "childish", "kawaii", "comic", "clipart", "mignon", "enfantin"];
 
-interface UploadedFile {
-  name: string;
-  type: "pdf" | "logo";
-  size: string;
-  uploadedAt: string;
+interface BrandFile {
+  id: string;
+  file_name: string;
+  file_type: string;
+  file_size: number;
+  storage_path: string;
+  created_at: string;
+}
+
+const ACCEPTED_TYPES = ["application/pdf", "image/svg+xml", "image/png", "image/jpeg", "image/webp"];
+const MAX_SIZE = 20 * 1024 * 1024; // 20MB
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function getFileType(name: string): string {
+  const ext = name.split(".").pop()?.toLowerCase() || "";
+  if (ext === "pdf") return "pdf";
+  return "logo";
 }
 
 export default function BrandBook() {
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([
-    { name: "DADZCO_BrandBook_v3.pdf", type: "pdf", size: "4.2 MB", uploadedAt: "2026-02-20" },
-    { name: "dadzco-logo-dark.svg", type: "logo", size: "12 KB", uploadedAt: "2026-02-20" },
-  ]);
+  const [files, setFiles] = useState<BrandFile[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [dnaLocked, setDnaLocked] = useState(true);
   const [dragOver, setDragOver] = useState(false);
   const [activeTab, setActiveTab] = useState<"quiet" | "funny" | "cash">("quiet");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const fetchFiles = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from("brand_files")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      setFiles((data as BrandFile[]) || []);
+    } catch {
+      // silently fail on load
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchFiles(); }, [fetchFiles]);
+
+  const uploadFile = async (file: File) => {
+    if (!ACCEPTED_TYPES.includes(file.type)) {
+      toast.error("Format non supporté. Utilisez PDF, SVG, PNG, JPG ou WebP.");
+      return;
+    }
+    if (file.size > MAX_SIZE) {
+      toast.error("Fichier trop volumineux (max 20 MB).");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { toast.error("Non authentifié."); return; }
+
+      const ext = file.name.split(".").pop()?.toLowerCase() || "bin";
+      const storagePath = `${user.id}/${crypto.randomUUID()}.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("brand-book-files")
+        .upload(storagePath, file, { contentType: file.type, upsert: false });
+      if (uploadError) throw uploadError;
+
+      const { error: dbError } = await supabase.from("brand_files").insert({
+        user_id: user.id,
+        file_name: file.name.slice(0, 255),
+        file_type: getFileType(file.name),
+        file_size: file.size,
+        storage_path: storagePath,
+      });
+      if (dbError) throw dbError;
+
+      toast.success(`"${file.name}" uploadé avec succès.`);
+      await fetchFiles();
+    } catch (e: any) {
+      console.error("Upload error:", e);
+      toast.error(e.message || "Erreur lors de l'upload.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const deleteFile = async (f: BrandFile) => {
+    try {
+      await supabase.storage.from("brand-book-files").remove([f.storage_path]);
+      await supabase.from("brand_files").delete().eq("id", f.id);
+      toast.success(`"${f.file_name}" supprimé.`);
+      await fetchFiles();
+    } catch {
+      toast.error("Erreur lors de la suppression.");
+    }
+  };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-    // In production, this would upload to storage
     const file = e.dataTransfer.files[0];
-    if (file) {
-      const ext = file.name.split(".").pop()?.toLowerCase();
-      setUploadedFiles((prev) => [
-        ...prev,
-        {
-          name: file.name,
-          type: ext === "pdf" ? "pdf" : "logo",
-          size: `${(file.size / 1024).toFixed(1)} KB`,
-          uploadedAt: new Date().toISOString().split("T")[0],
-        },
-      ]);
-    }
+    if (file) uploadFile(file);
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) uploadFile(file);
+    if (inputRef.current) inputRef.current.value = "";
   };
 
   return (
@@ -105,13 +188,18 @@ export default function BrandBook() {
                 <CardDescription className="text-xs">PDF, SVG, PNG — max 20 MB</CardDescription>
               </CardHeader>
               <CardContent>
+                <input
+                  ref={inputRef}
+                  type="file"
+                  accept=".pdf,.svg,.png,.jpg,.jpeg,.webp"
+                  className="hidden"
+                  onChange={handleInputChange}
+                />
                 <div
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setDragOver(true);
-                  }}
+                  onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                   onDragLeave={() => setDragOver(false)}
                   onDrop={handleDrop}
+                  onClick={() => inputRef.current?.click()}
                   className={`border-2 border-dashed rounded-lg p-8 text-center transition-all duration-300 cursor-pointer ${
                     dragOver
                       ? "border-accent bg-accent/10 glow-lavande"
@@ -119,10 +207,14 @@ export default function BrandBook() {
                   }`}
                 >
                   <div className="echo-motif mb-4">
-                    <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
+                    {uploading ? (
+                      <Loader2 className="h-8 w-8 mx-auto text-accent animate-spin" />
+                    ) : (
+                      <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
+                    )}
                   </div>
                   <p className="text-xs font-body text-muted-foreground mb-1">
-                    Glissez vos fichiers ici
+                    {uploading ? "Upload en cours…" : "Glissez vos fichiers ici"}
                   </p>
                   <p className="text-[10px] font-body text-muted-foreground/60">
                     ou cliquez pour parcourir
@@ -131,21 +223,41 @@ export default function BrandBook() {
 
                 {/* Uploaded files */}
                 <div className="mt-4 space-y-2">
-                  {uploadedFiles.map((file, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-3 p-2.5 rounded-md bg-muted/50 hover:bg-muted transition-colors"
-                    >
-                      <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-body font-medium truncate">{file.name}</p>
-                        <p className="text-[10px] text-muted-foreground">{file.size} · {file.uploadedAt}</p>
-                      </div>
-                      <Badge variant="outline" className="text-[9px] shrink-0">
-                        {file.type.toUpperCase()}
-                      </Badge>
+                  {loading ? (
+                    <div className="flex items-center justify-center py-4">
+                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                     </div>
-                  ))}
+                  ) : files.length === 0 ? (
+                    <p className="text-[10px] text-muted-foreground text-center py-3 font-body">
+                      Aucun fichier uploadé
+                    </p>
+                  ) : (
+                    files.map((file) => (
+                      <div
+                        key={file.id}
+                        className="flex items-center gap-3 p-2.5 rounded-md bg-muted/50 hover:bg-muted transition-colors group"
+                      >
+                        <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-body font-medium truncate">{file.file_name}</p>
+                          <p className="text-[10px] text-muted-foreground">
+                            {formatFileSize(file.file_size)} · {file.created_at.split("T")[0]}
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="text-[9px] shrink-0">
+                          {file.file_type.toUpperCase()}
+                        </Badge>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-destructive/70 hover:text-destructive"
+                          onClick={(e) => { e.stopPropagation(); deleteFile(file); }}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))
+                  )}
                 </div>
               </CardContent>
             </Card>
