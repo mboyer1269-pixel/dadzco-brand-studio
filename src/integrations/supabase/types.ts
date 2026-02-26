@@ -44,6 +44,56 @@ export type Database = {
         }
         Relationships: []
       }
+      brand_rules: {
+        Row: {
+          brand_file_id: string | null
+          category: string
+          created_at: string
+          forbidden_keywords: Json | null
+          id: string
+          palette: Json | null
+          raw_summary: string | null
+          rules: Json
+          typography: Json | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          brand_file_id?: string | null
+          category?: string
+          created_at?: string
+          forbidden_keywords?: Json | null
+          id?: string
+          palette?: Json | null
+          raw_summary?: string | null
+          rules?: Json
+          typography?: Json | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          brand_file_id?: string | null
+          category?: string
+          created_at?: string
+          forbidden_keywords?: Json | null
+          id?: string
+          palette?: Json | null
+          raw_summary?: string | null
+          rules?: Json
+          typography?: Json | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brand_rules_brand_file_id_fkey"
+            columns: ["brand_file_id"]
+            isOneToOne: false
+            referencedRelation: "brand_files"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       collection_items: {
         Row: {
           collection_id: string
