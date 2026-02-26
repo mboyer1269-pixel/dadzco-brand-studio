@@ -4,23 +4,33 @@ import { AppLayout } from "@/components/AppLayout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { FolderOpen, Plus, Calendar } from "lucide-react";
+import { FolderOpen, Plus, Calendar, Users, Package } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 
+interface CollectionWithCount extends Tables<"collections"> {
+  item_count: number;
+}
+
 const Collections = () => {
-  const [collections, setCollections] = useState<Tables<"collections">[]>([]);
+  const [collections, setCollections] = useState<CollectionWithCount[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase
-      .from("collections")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .then(({ data }) => {
-        setCollections(data || []);
-        setLoading(false);
-      });
+    const load = async () => {
+      const { data: cols } = await supabase
+        .from("collections")
+        .select("*, collection_items(count)")
+        .order("created_at", { ascending: false });
+
+      const mapped: CollectionWithCount[] = (cols || []).map((c: any) => ({
+        ...c,
+        item_count: c.collection_items?.[0]?.count ?? 0,
+      }));
+      setCollections(mapped);
+      setLoading(false);
+    };
+    load();
   }, []);
 
   return (
@@ -69,24 +79,62 @@ const Collections = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {collections.map((c) => {
               const meta = c.metadata as any;
+              const isRoundTable = meta?.source === "round_table";
               return (
                 <Card key={c.id} className="border-border card-lift gradient-card-warm">
                   <CardContent className="p-5">
                     <div className="flex items-start justify-between mb-3">
                       <h3 className="font-display text-lg font-light text-foreground">{c.name}</h3>
-                      <Badge variant={c.status === "draft" ? "secondary" : "default"} className="text-[9px] font-body uppercase">
-                        {c.status}
-                      </Badge>
+                      <div className="flex gap-1.5 flex-shrink-0">
+                        {isRoundTable && (
+                          <Badge className="text-[9px] font-body uppercase bg-primary/15 text-primary border-primary/20 hover:bg-primary/20">
+                            <Users className="h-2.5 w-2.5 mr-1" />
+                            Round Table
+                          </Badge>
+                        )}
+                        <Badge variant={c.status === "draft" ? "secondary" : "default"} className="text-[9px] font-body uppercase">
+                          {c.status}
+                        </Badge>
+                      </div>
                     </div>
-                    {c.season && (
-                      <div className="flex items-center gap-1.5 mb-2">
-                        <Calendar className="h-3 w-3 text-muted-foreground" />
-                        <span className="text-xs text-muted-foreground font-body">{c.season}</span>
+
+                    {c.description && (
+                      <p className="text-xs text-muted-foreground font-body mb-2 line-clamp-2">{c.description}</p>
+                    )}
+
+                    <div className="flex items-center gap-3 mb-2">
+                      {c.season && (
+                        <div className="flex items-center gap-1.5">
+                          <Calendar className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-xs text-muted-foreground font-body">{c.season}</span>
+                        </div>
+                      )}
+                      {c.item_count > 0 && (
+                        <div className="flex items-center gap-1.5">
+                          <Package className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-xs text-muted-foreground font-body">{c.item_count} SKUs</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Palette swatches for Round Table collections */}
+                    {isRoundTable && meta?.palette?.length > 0 && (
+                      <div className="flex items-center gap-1 mb-2">
+                        {meta.palette.map((color: string, i: number) => (
+                          <span
+                            key={i}
+                            className="w-4 h-4 rounded-full border border-border"
+                            style={{ backgroundColor: color }}
+                            title={color}
+                          />
+                        ))}
                       </div>
                     )}
-                    {meta?.type && (
+
+                    {meta?.type && !isRoundTable && (
                       <Badge variant="outline" className="text-[9px] font-body capitalize">{meta.type}</Badge>
                     )}
+
                     <p className="text-[10px] text-muted-foreground font-body mt-3">
                       Created {new Date(c.created_at).toLocaleDateString()}
                     </p>
