@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.check-gates]
 verify_jwt = false
+
+[functions.extract-brand-rules]
+verify_jwt = false
