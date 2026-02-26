@@ -16,6 +16,7 @@ import Exports from "./pages/Exports";
 import BrandBook from "./pages/BrandBook";
 import CalendarPlanner from "./pages/CalendarPlanner";
 import SettingsPage from "./pages/SettingsPage";
+import RoundTable from "./pages/RoundTable";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -73,6 +74,7 @@ const App = () => (
               <Route path="/storytelling" element={<ProtectedRoute><Storytelling /></ProtectedRoute>} />
               <Route path="/exports" element={<ProtectedRoute><Exports /></ProtectedRoute>} />
               <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+              <Route path="/round-table" element={<ProtectedRoute><RoundTable /></ProtectedRoute>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

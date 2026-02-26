@@ -3,7 +3,7 @@ import { WelcomeTour } from "@/components/WelcomeTour";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
-  Sparkles, FolderOpen, Image, Download, PenTool, TrendingUp, ArrowRight,
+  Sparkles, FolderOpen, Image, Download, PenTool, TrendingUp, ArrowRight, Users,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -177,21 +177,39 @@ const Dashboard = () => {
           </section>
         </div>
 
-        {/* CTA — Create Design */}
+        {/* CTA — Round Table */}
         <section className="text-center py-8">
           <div className="echo-motif inline-block p-8">
-            <p className="font-display text-sm text-muted-foreground italic mb-4">
-              Ready to create something extraordinary?
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <Users className="h-5 w-5 text-muted-foreground" />
+              <p className="font-display text-base text-foreground">
+                Round Table
+              </p>
+            </div>
+            <p className="font-body text-xs text-muted-foreground italic mb-4">
+              7 agents · 3 collections · 1 pass
             </p>
-            <Link to="/generate">
+            <Link to="/round-table">
               <Button
                 size="lg"
                 className="font-body text-xs tracking-[0.2em] uppercase h-12 px-10 btn-glow"
               >
-                <Sparkles className="h-4 w-4 mr-2" />
-                Create Design
+                <Users className="h-4 w-4 mr-2" />
+                Run Round Table for 3 Collections
               </Button>
             </Link>
+            <div className="mt-4">
+              <Link to="/generate">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="font-body text-xs text-muted-foreground hover:text-foreground"
+                >
+                  <Sparkles className="h-3 w-3 mr-1" />
+                  Or create a single design
+                </Button>
+              </Link>
+            </div>
           </div>
         </section>
       </div>

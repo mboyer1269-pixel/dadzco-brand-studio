@@ -11,6 +11,7 @@ import {
   Sun,
   BookOpen,
   CalendarDays,
+  Users,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/lib/auth";
@@ -31,6 +32,7 @@ import { Button } from "@/components/ui/button";
 
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Round Table", url: "/round-table", icon: Users },
   { title: "Brand Book", url: "/brand-book", icon: BookOpen },
   { title: "Calendar", url: "/calendar", icon: CalendarDays },
   { title: "Generator", url: "/generate", icon: Sparkles },
