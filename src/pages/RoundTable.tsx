@@ -9,8 +9,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { formatCAD } from "@/lib/pricing";
 import {
-  Users, Sparkles, Package, DollarSign, BookOpen, Loader2,
-  ShoppingBag, Palette, MessageSquare, Crown, Laugh,
+  Users, Sparkles, Package, BookOpen, Loader2,
+  ShoppingBag, Palette, MessageSquare, Crown, Laugh, Image, ImagePlus,
 } from "lucide-react";
 
 const AGENT_ICONS: Record<string, string> = {
@@ -68,15 +68,21 @@ interface Collection {
   skus: SKU[];
 }
 
+// Track mockup images by collection index + sku index
+type MockupMap = Record<string, string>; // "ci-si" -> imageUrl
+
 export default function RoundTable() {
   const { toast } = useToast();
   const [isGenerating, setIsGenerating] = useState(false);
   const [customInstructions, setCustomInstructions] = useState("");
   const [collections, setCollections] = useState<Collection[]>([]);
   const [activeCollection, setActiveCollection] = useState("0");
+  const [mockups, setMockups] = useState<MockupMap>({});
+  const [generatingMockups, setGeneratingMockups] = useState<Record<string, boolean>>({});
 
   const handleGenerate = async () => {
     setIsGenerating(true);
+    setMockups({});
     try {
       const { data, error } = await supabase.functions.invoke("round-table", {
         body: { customInstructions: customInstructions.trim() || undefined },
@@ -97,6 +103,49 @@ export default function RoundTable() {
       toast({ title: "Erreur", description: e.message, variant: "destructive" });
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleGenerateMockup = async (ci: number, si: number, sku: SKU) => {
+    const key = `${ci}-${si}`;
+    setGeneratingMockups((prev) => ({ ...prev, [key]: true }));
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-mockup", {
+        body: { prompt: sku.mockup_brief, skuName: sku.name },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      if (data?.imageUrl) {
+        setMockups((prev) => ({ ...prev, [key]: data.imageUrl }));
+        toast({
+          title: "Mock-up généré",
+          description: `Visuel prêt pour "${sku.name}"`,
+        });
+      }
+    } catch (e: any) {
+      console.error("Mockup error:", e);
+      toast({ title: "Erreur mock-up", description: e.message, variant: "destructive" });
+    } finally {
+      setGeneratingMockups((prev) => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const handleGenerateAllMockups = async (ci: number) => {
+    const collection = collections[ci];
+    if (!collection?.skus) return;
+
+    toast({
+      title: "Génération en cours",
+      description: `Génération de ${collection.skus.length} mock-ups pour "${collection.name}"…`,
+    });
+
+    // Generate sequentially to avoid rate limits
+    for (let si = 0; si < collection.skus.length; si++) {
+      const key = `${ci}-${si}`;
+      if (mockups[key]) continue; // skip already generated
+      await handleGenerateMockup(ci, si, collection.skus[si]);
     }
   };
 
@@ -166,7 +215,14 @@ export default function RoundTable() {
 
             {collections.map((collection, ci) => (
               <TabsContent key={ci} value={String(ci)} className="space-y-6 mt-6">
-                <CollectionView collection={collection} />
+                <CollectionView
+                  collection={collection}
+                  collectionIndex={ci}
+                  mockups={mockups}
+                  generatingMockups={generatingMockups}
+                  onGenerateMockup={handleGenerateMockup}
+                  onGenerateAllMockups={handleGenerateAllMockups}
+                />
               </TabsContent>
             ))}
           </Tabs>
@@ -176,7 +232,27 @@ export default function RoundTable() {
   );
 }
 
-function CollectionView({ collection }: { collection: Collection }) {
+interface CollectionViewProps {
+  collection: Collection;
+  collectionIndex: number;
+  mockups: MockupMap;
+  generatingMockups: Record<string, boolean>;
+  onGenerateMockup: (ci: number, si: number, sku: SKU) => void;
+  onGenerateAllMockups: (ci: number) => void;
+}
+
+function CollectionView({
+  collection,
+  collectionIndex,
+  mockups,
+  generatingMockups,
+  onGenerateMockup,
+  onGenerateAllMockups,
+}: CollectionViewProps) {
+  const generatedCount = collection.skus?.filter((_, si) => mockups[`${collectionIndex}-${si}`]).length || 0;
+  const totalSkus = collection.skus?.length || 0;
+  const isAnyGenerating = collection.skus?.some((_, si) => generatingMockups[`${collectionIndex}-${si}`]) || false;
+
   return (
     <div className="space-y-6">
       {/* Overview */}
@@ -200,6 +276,34 @@ function CollectionView({ collection }: { collection: Collection }) {
                 <span key={i} className="text-xs font-body text-muted-foreground">{c}{i < collection.palette.length - 1 ? " ·" : ""}</span>
               ))}
             </div>
+          </div>
+
+          {/* Generate All Mockups Button */}
+          <div className="pt-2 border-t border-border mt-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onGenerateAllMockups(collectionIndex)}
+              disabled={isAnyGenerating || generatedCount === totalSkus}
+              className="font-body text-[10px] tracking-wider uppercase"
+            >
+              {isAnyGenerating ? (
+                <>
+                  <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
+                  Génération en cours…
+                </>
+              ) : generatedCount === totalSkus ? (
+                <>
+                  <Image className="h-3 w-3 mr-1.5" />
+                  {totalSkus} mock-ups générés ✓
+                </>
+              ) : (
+                <>
+                  <ImagePlus className="h-3 w-3 mr-1.5" />
+                  Générer tous les mock-ups ({generatedCount}/{totalSkus})
+                </>
+              )}
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -243,17 +347,32 @@ function CollectionView({ collection }: { collection: Collection }) {
       <div className="space-y-4">
         <h3 className="font-display text-base font-light text-foreground flex items-center gap-2">
           <ShoppingBag className="h-4 w-4" />
-          {collection.skus?.length || 0} SKUs
+          {totalSkus} SKUs
         </h3>
         {collection.skus?.map((sku, si) => (
-          <SKUCard key={si} sku={sku} index={si} />
+          <SKUCard
+            key={si}
+            sku={sku}
+            index={si}
+            mockupUrl={mockups[`${collectionIndex}-${si}`]}
+            isGeneratingMockup={generatingMockups[`${collectionIndex}-${si}`] || false}
+            onGenerateMockup={() => onGenerateMockup(collectionIndex, si, sku)}
+          />
         ))}
       </div>
     </div>
   );
 }
 
-function SKUCard({ sku, index }: { sku: SKU; index: number }) {
+interface SKUCardProps {
+  sku: SKU;
+  index: number;
+  mockupUrl?: string;
+  isGeneratingMockup: boolean;
+  onGenerateMockup: () => void;
+}
+
+function SKUCard({ sku, index, mockupUrl, isGeneratingMockup, onGenerateMockup }: SKUCardProps) {
   const [expanded, setExpanded] = useState(false);
   const isQuiet = sku.type === "quiet";
 
@@ -274,6 +393,18 @@ function SKUCard({ sku, index }: { sku: SKU; index: number }) {
           </div>
           <span className="text-[10px] text-muted-foreground font-body">#{index + 1}</span>
         </div>
+
+        {/* Mock-up Image */}
+        {mockupUrl && (
+          <div className="mb-4 rounded-lg overflow-hidden border border-border bg-muted/20">
+            <img
+              src={mockupUrl}
+              alt={`Mock-up ${sku.name}`}
+              className="w-full h-auto max-h-80 object-contain"
+              loading="lazy"
+            />
+          </div>
+        )}
 
         {/* Placement */}
         <p className="text-xs text-muted-foreground font-body mb-3">{sku.placement}</p>
@@ -301,15 +432,52 @@ function SKUCard({ sku, index }: { sku: SKU; index: number }) {
           </div>
         </div>
 
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setExpanded(!expanded)}
-          className="text-xs font-body text-muted-foreground p-0 h-auto"
-        >
-          <BookOpen className="h-3 w-3 mr-1" />
-          {expanded ? "Masquer storytelling" : "Voir storytelling"}
-        </Button>
+        {/* Action Buttons */}
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setExpanded(!expanded)}
+            className="text-xs font-body text-muted-foreground p-0 h-auto"
+          >
+            <BookOpen className="h-3 w-3 mr-1" />
+            {expanded ? "Masquer storytelling" : "Voir storytelling"}
+          </Button>
+
+          {!mockupUrl && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onGenerateMockup}
+              disabled={isGeneratingMockup}
+              className="text-xs font-body text-muted-foreground p-0 h-auto"
+            >
+              {isGeneratingMockup ? (
+                <>
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  Génération…
+                </>
+              ) : (
+                <>
+                  <ImagePlus className="h-3 w-3 mr-1" />
+                  Générer mock-up
+                </>
+              )}
+            </Button>
+          )}
+
+          {mockupUrl && (
+            <a
+              href={mockupUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-body text-muted-foreground hover:text-foreground flex items-center gap-1"
+            >
+              <Image className="h-3 w-3" />
+              Ouvrir l'image
+            </a>
+          )}
+        </div>
 
         {expanded && sku.story && (
           <div className="mt-4 space-y-3 border-t border-border pt-4">
