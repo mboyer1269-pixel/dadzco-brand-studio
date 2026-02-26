@@ -48,19 +48,19 @@ const Collections = () => {
             <p className="text-sm text-muted-foreground font-body animate-pulse">Loading…</p>
           </div>
         ) : collections.length === 0 ? (
-          <Card className="border-border border-dashed">
-            <CardContent className="p-12 text-center">
-              <FolderOpen className="h-8 w-8 mx-auto mb-3 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground font-body">
-                No collections yet. Create your first capsule collection.
+          <Card className="border-border border-dashed gradient-card-warm">
+            <CardContent className="p-16 text-center echo-motif">
+              <FolderOpen className="h-10 w-10 mx-auto mb-4 text-muted-foreground" />
+              <p className="font-display text-lg font-light text-foreground mb-1">
+                Your first capsule awaits
               </p>
-              <p className="text-xs text-muted-foreground font-body mt-2">
-                Each collection includes margin calculator, family bundles, and personalization options.
+              <p className="text-sm text-muted-foreground font-body max-w-md mx-auto">
+                Build a collection with margin calculator, family bundles, and personalization — all guided by the wizard.
               </p>
               <Link to="/collections/new">
-                <Button variant="outline" size="sm" className="mt-4 font-body text-xs tracking-wider uppercase">
-                  <Plus className="h-3.5 w-3.5 mr-2" />
-                  Start Wizard
+                <Button size="lg" className="mt-6 font-body text-xs tracking-[0.2em] uppercase h-11 px-8 btn-glow">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Start Collection Wizard
                 </Button>
               </Link>
             </CardContent>
@@ -70,7 +70,7 @@ const Collections = () => {
             {collections.map((c) => {
               const meta = c.metadata as any;
               return (
-                <Card key={c.id} className="border-border hover:shadow-md transition-all">
+                <Card key={c.id} className="border-border card-lift gradient-card-warm">
                   <CardContent className="p-5">
                     <div className="flex items-start justify-between mb-3">
                       <h3 className="font-display text-lg font-light text-foreground">{c.name}</h3>
