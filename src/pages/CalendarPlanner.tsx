@@ -20,6 +20,7 @@ import {
   Target,
   Zap,
   BarChart3,
+  Trash2,
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, addMonths, subMonths, isSameDay } from "date-fns";
 import GanttTimeline from "@/components/calendar/GanttTimeline";
@@ -244,6 +245,27 @@ export default function CalendarPlanner() {
     }
   };
 
+  const handleClearTasks = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { toast.error("Non authentifié."); return; }
+
+      const collId = selectedCollectionId !== "default" ? selectedCollectionId : null;
+      let query = supabase.from("planner_tasks").delete().eq("user_id", user.id);
+      if (collId) {
+        query = query.eq("collection_id", collId);
+      } else {
+        query = query.is("collection_id", null);
+      }
+      await query;
+
+      setTasks([]);
+      toast.success("Tâches supprimées.");
+    } catch {
+      toast.error("Erreur lors de la suppression.");
+    }
+  };
+
   return (
     <AppLayout>
       <div className="max-w-7xl mx-auto space-y-6">
@@ -282,6 +304,15 @@ export default function CalendarPlanner() {
                   ))}
                 </SelectContent>
               </Select>
+              <Button
+                variant="outline"
+                onClick={handleClearTasks}
+                disabled={isGenerating || tasks.length === 0}
+                className="font-body text-xs tracking-wider uppercase gap-2 border-destructive/30 text-destructive/70 hover:text-destructive hover:bg-destructive/5"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Clear
+              </Button>
               <Button
                 onClick={handleGenerateTasks}
                 disabled={isGenerating}
