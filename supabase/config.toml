@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.extract-brand-rules]
 verify_jwt = false
+
+[functions.round-table]
+verify_jwt = false
