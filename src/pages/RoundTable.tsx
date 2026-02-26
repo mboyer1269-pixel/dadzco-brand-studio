@@ -8,9 +8,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { formatCAD } from "@/lib/pricing";
+import { exportCollectionPDF } from "@/lib/export-collection-pdf";
 import {
   Users, Sparkles, Package, BookOpen, Loader2, Save, Check,
   ShoppingBag, Palette, MessageSquare, Crown, Laugh, Image, ImagePlus,
+  FileDown,
 } from "lucide-react";
 
 const AGENT_ICONS: Record<string, string> = {
@@ -81,7 +83,7 @@ export default function RoundTable() {
   const [generatingMockups, setGeneratingMockups] = useState<Record<string, boolean>>({});
   const [savedCollections, setSavedCollections] = useState<Record<number, string>>({});
   const [savingCollection, setSavingCollection] = useState<Record<number, boolean>>({});
-
+  const [exportingPDF, setExportingPDF] = useState<Record<number, boolean>>({});
   const handleGenerate = async () => {
     setIsGenerating(true);
     setMockups({});
@@ -158,7 +160,6 @@ export default function RoundTable() {
 
     setSavingCollection((prev) => ({ ...prev, [ci]: true }));
     try {
-      // Gather mockup URLs for this collection's SKUs
       const skuMockups: Record<number, string> = {};
       collection.skus?.forEach((_, si) => {
         const key = `${ci}-${si}`;
@@ -182,6 +183,27 @@ export default function RoundTable() {
       toast({ title: "Erreur", description: e.message, variant: "destructive" });
     } finally {
       setSavingCollection((prev) => ({ ...prev, [ci]: false }));
+    }
+  };
+
+  const handleExportPDF = async (ci: number) => {
+    const collection = collections[ci];
+    if (!collection) return;
+
+    setExportingPDF((prev) => ({ ...prev, [ci]: true }));
+    try {
+      await exportCollectionPDF(collection, mockups, ci, (msg) => {
+        console.log("PDF export:", msg);
+      });
+      toast({
+        title: "PDF exporté",
+        description: `"${collection.name}" téléchargé avec succès`,
+      });
+    } catch (e: any) {
+      console.error("PDF export error:", e);
+      toast({ title: "Erreur PDF", description: e.message, variant: "destructive" });
+    } finally {
+      setExportingPDF((prev) => ({ ...prev, [ci]: false }));
     }
   };
 
@@ -259,6 +281,8 @@ export default function RoundTable() {
                   onGenerateMockup={handleGenerateMockup}
                   onGenerateAllMockups={handleGenerateAllMockups}
                   onSaveCollection={handleSaveCollection}
+                  onExportPDF={handleExportPDF}
+                  isExporting={exportingPDF[ci] || false}
                   isSaving={savingCollection[ci] || false}
                   savedId={savedCollections[ci]}
                 />
@@ -279,6 +303,8 @@ interface CollectionViewProps {
   onGenerateMockup: (ci: number, si: number, sku: SKU) => void;
   onGenerateAllMockups: (ci: number) => void;
   onSaveCollection: (ci: number) => void;
+  onExportPDF: (ci: number) => void;
+  isExporting: boolean;
   isSaving: boolean;
   savedId?: string;
 }
@@ -291,6 +317,8 @@ function CollectionView({
   onGenerateMockup,
   onGenerateAllMockups,
   onSaveCollection,
+  onExportPDF,
+  isExporting,
   isSaving,
   savedId,
 }: CollectionViewProps) {
@@ -370,6 +398,25 @@ function CollectionView({
                 <>
                   <Save className="h-3 w-3 mr-1.5" />
                   Sauvegarder en Collection
+                </>
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onExportPDF(collectionIndex)}
+              disabled={isExporting}
+              className="font-body text-[10px] tracking-wider uppercase"
+            >
+              {isExporting ? (
+                <>
+                  <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
+                  Export PDF…
+                </>
+              ) : (
+                <>
+                  <FileDown className="h-3 w-3 mr-1.5" />
+                  Exporter PDF
                 </>
               )}
             </Button>
