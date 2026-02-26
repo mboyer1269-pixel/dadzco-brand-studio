@@ -3,12 +3,15 @@ import { supabase } from "@/integrations/supabase/client";
 import type { User, Session } from "@supabase/supabase-js";
 
 const ADMIN_EMAIL = "dadzco.brand@gmail.com";
+const ACCESS_CODE = "0413";
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   isAdmin: boolean;
   isLoading: boolean;
+  isAuthenticated: boolean;
+  signInWithCode: (code: string) => { error: Error | null };
   signInWithMagicLink: (email: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
 }
@@ -18,9 +21,13 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isCodeAuthenticated, setIsCodeAuthenticated] = useState(() => {
+    return sessionStorage.getItem("dadzco_auth") === "true";
+  });
 
-  const isAdmin = user?.email === ADMIN_EMAIL;
+  const isAdmin = isCodeAuthenticated || user?.email === ADMIN_EMAIL;
+  const isAuthenticated = isCodeAuthenticated || !!user;
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -40,9 +47,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
+  const signInWithCode = (code: string) => {
+    if (code === ACCESS_CODE) {
+      setIsCodeAuthenticated(true);
+      sessionStorage.setItem("dadzco_auth", "true");
+      return { error: null };
+    }
+    return { error: new Error("Code incorrect.") };
+  };
+
   const signInWithMagicLink = async (email: string) => {
     if (email.toLowerCase() !== ADMIN_EMAIL) {
-      return { error: new Error("Access restricted. Only authorized administrators may sign in.") };
+      return { error: new Error("Access restricted.") };
     }
     const { error } = await supabase.auth.signInWithOtp({
       email,
@@ -52,11 +68,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
+    setIsCodeAuthenticated(false);
+    sessionStorage.removeItem("dadzco_auth");
     await supabase.auth.signOut();
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, isAdmin, isLoading, signInWithMagicLink, signOut }}>
+    <AuthContext.Provider value={{ user, session, isAdmin, isLoading, isAuthenticated, signInWithCode, signInWithMagicLink, signOut }}>
       {children}
     </AuthContext.Provider>
   );
