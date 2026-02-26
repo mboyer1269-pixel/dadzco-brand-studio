@@ -20,6 +20,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, addMonths, subMonths, isSameDay } from "date-fns";
+import GanttTimeline from "@/components/calendar/GanttTimeline";
 import { fr } from "date-fns/locale";
 
 type TaskPriority = "high" | "medium" | "low";
@@ -226,68 +227,74 @@ export default function CalendarPlanner() {
                 </div>
               </CardHeader>
               <CardContent>
-                {/* Day headers */}
-                <div className="grid grid-cols-7 gap-px mb-1">
-                  {["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"].map((d) => (
-                    <div key={d} className="text-center text-[9px] font-body uppercase tracking-wider text-muted-foreground py-2">
-                      {d}
-                    </div>
-                  ))}
-                </div>
-                {/* Days grid */}
-                <div className="grid grid-cols-7 gap-px">
-                  {days.map((day, i) => {
-                    const dayTasks = getTasksForDay(day);
-                    const inMonth = isSameMonth(day, currentMonth);
-                    const today = isToday(day);
-                    return (
-                      <div
-                        key={i}
-                        className={`min-h-[80px] p-1.5 rounded-sm border transition-colors ${
-                          today
-                            ? "border-accent/50 bg-accent/5"
-                            : inMonth
-                            ? "border-border/50 hover:bg-muted/30"
-                            : "border-transparent opacity-40"
-                        }`}
-                      >
-                        <span
-                          className={`text-[10px] font-body ${
-                            today ? "font-semibold text-foreground" : "text-muted-foreground"
-                          }`}
-                        >
-                          {format(day, "d")}
-                        </span>
-                        <div className="mt-0.5 space-y-0.5">
-                          {dayTasks.slice(0, 2).map((t) => (
-                            <Tooltip key={t.id}>
-                              <TooltipTrigger asChild>
-                                <div
-                                  className={`text-[8px] font-body px-1 py-0.5 rounded truncate cursor-pointer transition-opacity ${
-                                    CATEGORY_CONFIG[t.category].color
-                                  } ${t.status === "done" ? "opacity-50 line-through" : ""}`}
-                                  onClick={() => toggleTaskStatus(t.id)}
-                                >
-                                  {t.cashAlert && "⚠️ "}{t.title.slice(0, 20)}…
-                                </div>
-                              </TooltipTrigger>
-                              <TooltipContent side="top" className="max-w-xs">
-                                <p className="text-xs font-body">{t.title}</p>
-                                <div className="flex gap-1 mt-1">
-                                  <Badge variant="outline" className="text-[8px]">{CATEGORY_CONFIG[t.category].label}</Badge>
-                                  <Badge variant={t.priority === "high" ? "destructive" : "outline"} className="text-[8px]">{t.priority}</Badge>
-                                </div>
-                              </TooltipContent>
-                            </Tooltip>
-                          ))}
-                          {dayTasks.length > 2 && (
-                            <span className="text-[8px] text-muted-foreground font-body">+{dayTasks.length - 2}</span>
-                          )}
+                {view === "90day" ? (
+                  <GanttTimeline tasks={tasks} onToggleStatus={toggleTaskStatus} />
+                ) : (
+                  <>
+                    {/* Day headers */}
+                    <div className="grid grid-cols-7 gap-px mb-1">
+                      {["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"].map((d) => (
+                        <div key={d} className="text-center text-[9px] font-body uppercase tracking-wider text-muted-foreground py-2">
+                          {d}
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      ))}
+                    </div>
+                    {/* Days grid */}
+                    <div className="grid grid-cols-7 gap-px">
+                      {days.map((day, i) => {
+                        const dayTasks = getTasksForDay(day);
+                        const inMonth = isSameMonth(day, currentMonth);
+                        const today = isToday(day);
+                        return (
+                          <div
+                            key={i}
+                            className={`min-h-[80px] p-1.5 rounded-sm border transition-colors ${
+                              today
+                                ? "border-accent/50 bg-accent/5"
+                                : inMonth
+                                ? "border-border/50 hover:bg-muted/30"
+                                : "border-transparent opacity-40"
+                            }`}
+                          >
+                            <span
+                              className={`text-[10px] font-body ${
+                                today ? "font-semibold text-foreground" : "text-muted-foreground"
+                              }`}
+                            >
+                              {format(day, "d")}
+                            </span>
+                            <div className="mt-0.5 space-y-0.5">
+                              {dayTasks.slice(0, 2).map((t) => (
+                                <Tooltip key={t.id}>
+                                  <TooltipTrigger asChild>
+                                    <div
+                                      className={`text-[8px] font-body px-1 py-0.5 rounded truncate cursor-pointer transition-opacity ${
+                                        CATEGORY_CONFIG[t.category].color
+                                      } ${t.status === "done" ? "opacity-50 line-through" : ""}`}
+                                      onClick={() => toggleTaskStatus(t.id)}
+                                    >
+                                      {t.cashAlert && "⚠️ "}{t.title.slice(0, 20)}…
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" className="max-w-xs">
+                                    <p className="text-xs font-body">{t.title}</p>
+                                    <div className="flex gap-1 mt-1">
+                                      <Badge variant="outline" className="text-[8px]">{CATEGORY_CONFIG[t.category].label}</Badge>
+                                      <Badge variant={t.priority === "high" ? "destructive" : "outline"} className="text-[8px]">{t.priority}</Badge>
+                                    </div>
+                                  </TooltipContent>
+                                </Tooltip>
+                              ))}
+                              {dayTasks.length > 2 && (
+                                <span className="text-[8px] text-muted-foreground font-body">+{dayTasks.length - 2}</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           </div>
