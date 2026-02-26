@@ -1,9 +1,10 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
@@ -64,10 +65,24 @@ const SAMPLE_TASKS: PlannerTask[] = [
 ];
 
 export default function CalendarPlanner() {
-  const [currentMonth, setCurrentMonth] = useState(new Date(2026, 2, 1)); // March 2026
+  const [currentMonth, setCurrentMonth] = useState(new Date(2026, 2, 1));
   const [tasks, setTasks] = useState<PlannerTask[]>(SAMPLE_TASKS);
   const [view, setView] = useState<"month" | "90day">("month");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [collections, setCollections] = useState<{ id: string; name: string; season: string | null; status: string }[]>([]);
+  const [selectedCollectionId, setSelectedCollectionId] = useState<string>("default");
+
+  const fetchCollections = useCallback(async () => {
+    const { data } = await supabase
+      .from("collections")
+      .select("id, name, season, status")
+      .order("created_at", { ascending: false });
+    if (data) setCollections(data);
+  }, []);
+
+  useEffect(() => { fetchCollections(); }, [fetchCollections]);
+
+  const selectedCollection = collections.find((c) => c.id === selectedCollectionId);
 
   const days = useMemo(() => {
     const start = startOfMonth(currentMonth);
@@ -90,15 +105,25 @@ export default function CalendarPlanner() {
   const completedCount = tasks.filter((t) => t.status === "done").length;
   const totalTasks = tasks.length;
 
-  const handleGenerateTasks = async () => {
+    const handleGenerateTasks = async () => {
     setIsGenerating(true);
     try {
+      // Fetch SKU count if a real collection is selected
+      let skuCount = 4;
+      if (selectedCollection) {
+        const { count } = await supabase
+          .from("collection_items")
+          .select("id", { count: "exact", head: true })
+          .eq("collection_id", selectedCollection.id);
+        if (count) skuCount = count;
+      }
+
       const { data, error } = await supabase.functions.invoke("generate-tasks", {
         body: {
-          collectionName: "Collection Printemps 2026",
+          collectionName: selectedCollection?.name || "Collection Printemps 2026",
           collectionType: "mixed (Quiet Luxury + Funny Dad)",
-          skuCount: 4,
-          season: "Printemps 2026",
+          skuCount,
+          season: selectedCollection?.season || "Printemps 2026",
           startDate: format(new Date(), "yyyy-MM-dd"),
         },
       });
@@ -158,14 +183,36 @@ export default function CalendarPlanner() {
                 Planification IA · Tâches auto-générées · Cash retention tracking
               </p>
             </div>
-            <Button
-              onClick={handleGenerateTasks}
-              disabled={isGenerating}
-              className="btn-glow font-body text-xs tracking-wider uppercase gap-2"
-            >
-              <Sparkles className="h-4 w-4" />
-              {isGenerating ? "Génération…" : "Agent IA — Générer tâches"}
-            </Button>
+            <div className="flex items-center gap-3">
+              <Select value={selectedCollectionId} onValueChange={setSelectedCollectionId}>
+                <SelectTrigger className="w-[220px] h-9 text-xs font-body bg-background/80 border-border">
+                  <SelectValue placeholder="Sélectionner collection" />
+                </SelectTrigger>
+                <SelectContent className="bg-background border-border z-50">
+                  <SelectItem value="default" className="text-xs font-body">
+                    Collection par défaut
+                  </SelectItem>
+                  {collections.map((c) => (
+                    <SelectItem key={c.id} value={c.id} className="text-xs font-body">
+                      <div className="flex items-center gap-2">
+                        <span>{c.name}</span>
+                        {c.season && (
+                          <Badge variant="outline" className="text-[8px] ml-1">{c.season}</Badge>
+                        )}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                onClick={handleGenerateTasks}
+                disabled={isGenerating}
+                className="btn-glow font-body text-xs tracking-wider uppercase gap-2"
+              >
+                <Sparkles className="h-4 w-4" />
+                {isGenerating ? "Génération…" : "Agent IA — Générer tâches"}
+              </Button>
+            </div>
           </div>
         </div>
 
