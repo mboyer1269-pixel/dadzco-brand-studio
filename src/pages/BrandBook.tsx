@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Upload, FileText, Palette, Shield, CheckCircle2, AlertTriangle, BookOpen, Lock, Eye, Trash2, Loader2, Sparkles, Type, Ban } from "lucide-react";
+import { FileThumbnail, FilePreviewButton } from "@/components/brand/FilePreview";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -329,13 +330,18 @@ export default function BrandBook() {
                         key={file.id}
                         className="flex items-center gap-3 p-2.5 rounded-md bg-muted/50 hover:bg-muted transition-colors group"
                       >
-                        <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <FileThumbnail fileName={file.file_name} storagePath={file.storage_path} />
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-body font-medium truncate">{file.file_name}</p>
                           <p className="text-[10px] text-muted-foreground">
                             {formatFileSize(file.file_size)} · {file.created_at.split("T")[0]}
                           </p>
                         </div>
+                        <FilePreviewButton
+                          fileName={file.file_name}
+                          storagePath={file.storage_path}
+                          fileType={file.file_type}
+                        />
                         {extracting === file.id ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin text-accent shrink-0" />
                         ) : (
