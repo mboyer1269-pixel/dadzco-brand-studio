@@ -4,6 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import {
   CalendarDays,
   ChevronLeft,
@@ -87,11 +89,45 @@ export default function CalendarPlanner() {
   const completedCount = tasks.filter((t) => t.status === "done").length;
   const totalTasks = tasks.length;
 
-  const handleGenerateTasks = () => {
+  const handleGenerateTasks = async () => {
     setIsGenerating(true);
-    setTimeout(() => {
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-tasks", {
+        body: {
+          collectionName: "Collection Printemps 2026",
+          collectionType: "mixed (Quiet Luxury + Funny Dad)",
+          skuCount: 4,
+          season: "Printemps 2026",
+          startDate: format(new Date(), "yyyy-MM-dd"),
+        },
+      });
+
+      if (error) throw error;
+
+      if (data?.error) {
+        if (data.error.includes("Rate limit")) {
+          toast.error("Limite de requêtes atteinte. Réessayez dans un instant.");
+        } else if (data.error.includes("credits")) {
+          toast.error("Crédits IA épuisés. Ajoutez des crédits pour continuer.");
+        } else {
+          toast.error(data.error);
+        }
+        return;
+      }
+
+      if (data?.tasks?.length) {
+        setTasks(data.tasks);
+        setCurrentMonth(new Date(data.tasks[0].date));
+        toast.success(`${data.tasks.length} tâches générées par l'Agent IA`);
+      } else {
+        toast.warning("Aucune tâche générée. Réessayez.");
+      }
+    } catch (e) {
+      console.error("Task generation error:", e);
+      toast.error("Erreur lors de la génération des tâches.");
+    } finally {
       setIsGenerating(false);
-    }, 1500);
+    }
   };
 
   const toggleTaskStatus = (id: string) => {
