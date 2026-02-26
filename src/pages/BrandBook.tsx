@@ -103,12 +103,15 @@ export default function BrandBook() {
   const [files, setFiles] = useState<BrandFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const [extracting, setExtracting] = useState<string | null>(null);
+  const [extractionProgress, setExtractionProgress] = useState(0);
+  const [extractionStep, setExtractionStep] = useState("");
   const [loading, setLoading] = useState(true);
   const [dnaLocked, setDnaLocked] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [activeTab, setActiveTab] = useState<"quiet" | "funny" | "cash" | "ai">("ai");
   const [extractedRules, setExtractedRules] = useState<BrandRules[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const progressRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchFiles = useCallback(async () => {
     try {
@@ -145,8 +148,47 @@ export default function BrandBook() {
     fetchExtractedRules();
   }, [fetchFiles, fetchExtractedRules]);
 
+  const EXTRACTION_STEPS = [
+    { at: 5, label: "Téléchargement du fichier…" },
+    { at: 15, label: "Conversion en cours…" },
+    { at: 30, label: "Analyse IA du document…" },
+    { at: 55, label: "Extraction des couleurs & typos…" },
+    { at: 75, label: "Structuration des règles brand…" },
+    { at: 90, label: "Sauvegarde des résultats…" },
+  ];
+
+  const startProgressSimulation = () => {
+    setExtractionProgress(0);
+    setExtractionStep(EXTRACTION_STEPS[0].label);
+    let current = 0;
+    progressRef.current = setInterval(() => {
+      current += Math.random() * 3 + 0.5;
+      if (current > 95) current = 95; // cap at 95 until real completion
+      setExtractionProgress(Math.round(current));
+      const step = [...EXTRACTION_STEPS].reverse().find((s) => current >= s.at);
+      if (step) setExtractionStep(step.label);
+    }, 400);
+  };
+
+  const stopProgressSimulation = (success: boolean) => {
+    if (progressRef.current) clearInterval(progressRef.current);
+    progressRef.current = null;
+    if (success) {
+      setExtractionProgress(100);
+      setExtractionStep("Extraction terminée ✓");
+      setTimeout(() => {
+        setExtractionProgress(0);
+        setExtractionStep("");
+      }, 2000);
+    } else {
+      setExtractionProgress(0);
+      setExtractionStep("");
+    }
+  };
+
   const extractBrandRules = async (file: BrandFile) => {
     setExtracting(file.id);
+    startProgressSimulation();
     try {
       const { data, error } = await supabase.functions.invoke("extract-brand-rules", {
         body: {
@@ -158,10 +200,12 @@ export default function BrandBook() {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
+      stopProgressSimulation(true);
       toast.success(`Règles extraites de "${file.file_name}" avec succès !`);
       await fetchExtractedRules();
     } catch (e: any) {
       console.error("Extraction error:", e);
+      stopProgressSimulation(false);
       toast.error(e.message || "Erreur lors de l'extraction des règles.");
     } finally {
       setExtracting(null);
@@ -378,26 +422,36 @@ export default function BrandBook() {
             </Card>
 
             {/* DNA Lock Status */}
-            <Card className={`card-lift ${dnaLocked ? "border-accent/30" : "border-destructive/30"}`}>
+            <Card className={`card-lift ${extracting ? "border-accent/50 animate-pulse-subtle" : dnaLocked ? "border-accent/30" : "border-destructive/30"}`}>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
-                    {dnaLocked ? (
+                    {extracting ? (
+                      <Loader2 className="h-4 w-4 text-accent animate-spin" />
+                    ) : dnaLocked ? (
                       <Lock className="h-4 w-4 text-accent" />
                     ) : (
                       <AlertTriangle className="h-4 w-4 text-destructive" />
                     )}
                     <span className="text-xs font-body font-medium">ADN Status</span>
                   </div>
-                  <Badge variant={dnaLocked ? "default" : "destructive"} className="text-[9px]">
-                    {dnaLocked ? "VERROUILLÉ IA" : "EN ATTENTE"}
+                  <Badge
+                    variant={extracting ? "outline" : dnaLocked ? "default" : "destructive"}
+                    className={`text-[9px] ${extracting ? "border-accent/50 text-accent" : ""}`}
+                  >
+                    {extracting ? "EXTRACTION IA…" : dnaLocked ? "VERROUILLÉ IA" : "EN ATTENTE"}
                   </Badge>
                 </div>
-                <Progress value={dnaLocked ? 100 : 20} className="h-1.5 mb-2" />
+                <Progress
+                  value={extracting ? extractionProgress : dnaLocked ? 100 : 20}
+                  className="h-1.5 mb-2"
+                />
                 <p className="text-[10px] text-muted-foreground font-body">
-                  {dnaLocked
-                    ? `${extractedRules.length} fichier(s) analysé(s). ADN auto-extrait et verrouillé.`
-                    : "Uploadez un Brand Book PDF pour activer l'extraction IA automatique."}
+                  {extracting
+                    ? `${extractionStep} (${extractionProgress}%)`
+                    : dnaLocked
+                      ? `${extractedRules.length} fichier(s) analysé(s). ADN auto-extrait et verrouillé.`
+                      : "Uploadez un Brand Book PDF pour activer l'extraction IA automatique."}
                 </p>
               </CardContent>
             </Card>
