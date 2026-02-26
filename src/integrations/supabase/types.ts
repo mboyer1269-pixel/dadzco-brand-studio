@@ -295,6 +295,56 @@ export type Database = {
         }
         Relationships: []
       }
+      planner_tasks: {
+        Row: {
+          cash_alert: boolean
+          category: string
+          collection_id: string | null
+          created_at: string
+          date: string
+          id: string
+          priority: string
+          status: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cash_alert?: boolean
+          category?: string
+          collection_id?: string | null
+          created_at?: string
+          date: string
+          id?: string
+          priority?: string
+          status?: string
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cash_alert?: boolean
+          category?: string
+          collection_id?: string | null
+          created_at?: string
+          date?: string
+          id?: string
+          priority?: string
+          status?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "planner_tasks_collection_id_fkey"
+            columns: ["collection_id"]
+            isOneToOne: false
+            referencedRelation: "collections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stories: {
         Row: {
           collection_id: string | null

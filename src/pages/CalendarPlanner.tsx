@@ -65,10 +65,11 @@ const SAMPLE_TASKS: PlannerTask[] = [
 ];
 
 export default function CalendarPlanner() {
-  const [currentMonth, setCurrentMonth] = useState(new Date(2026, 2, 1));
-  const [tasks, setTasks] = useState<PlannerTask[]>(SAMPLE_TASKS);
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [tasks, setTasks] = useState<PlannerTask[]>([]);
   const [view, setView] = useState<"month" | "90day">("month");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [loadingTasks, setLoadingTasks] = useState(true);
   const [collections, setCollections] = useState<{ id: string; name: string; season: string | null; status: string }[]>([]);
   const [selectedCollectionId, setSelectedCollectionId] = useState<string>("default");
 
@@ -80,7 +81,41 @@ export default function CalendarPlanner() {
     if (data) setCollections(data);
   }, []);
 
+  const fetchTasks = useCallback(async () => {
+    setLoadingTasks(true);
+    try {
+      const collectionFilter = selectedCollectionId !== "default" ? selectedCollectionId : null;
+      let query = supabase
+        .from("planner_tasks")
+        .select("*")
+        .order("date", { ascending: true });
+      if (collectionFilter) {
+        query = query.eq("collection_id", collectionFilter);
+      }
+      const { data, error } = await query;
+      if (error) throw error;
+      const mapped: PlannerTask[] = (data || []).map((row: any) => ({
+        id: row.id,
+        title: row.title,
+        date: row.date,
+        priority: row.priority as TaskPriority,
+        status: row.status as TaskStatus,
+        category: row.category as TaskCategory,
+        cashAlert: row.cash_alert,
+      }));
+      setTasks(mapped.length > 0 ? mapped : SAMPLE_TASKS);
+      if (mapped.length > 0) {
+        setCurrentMonth(new Date(mapped[0].date));
+      }
+    } catch {
+      setTasks(SAMPLE_TASKS);
+    } finally {
+      setLoadingTasks(false);
+    }
+  }, [selectedCollectionId]);
+
   useEffect(() => { fetchCollections(); }, [fetchCollections]);
+  useEffect(() => { fetchTasks(); }, [fetchTasks]);
 
   const selectedCollection = collections.find((c) => c.id === selectedCollectionId);
 
@@ -142,9 +177,36 @@ export default function CalendarPlanner() {
       }
 
       if (data?.tasks?.length) {
-        setTasks(data.tasks);
-        setCurrentMonth(new Date(data.tasks[0].date));
-        toast.success(`${data.tasks.length} tâches générées par l'Agent IA`);
+        // Persist to database
+        const { data: { user } } = await supabase.auth.getUser();
+        const collId = selectedCollectionId !== "default" ? selectedCollectionId : null;
+
+        if (user) {
+          // Delete old tasks for this collection scope
+          let deleteQuery = supabase.from("planner_tasks").delete().eq("user_id", user.id);
+          if (collId) {
+            deleteQuery = deleteQuery.eq("collection_id", collId);
+          } else {
+            deleteQuery = deleteQuery.is("collection_id", null);
+          }
+          await deleteQuery;
+
+          // Insert new tasks
+          const rows = data.tasks.map((t: any) => ({
+            user_id: user.id,
+            collection_id: collId,
+            title: t.title,
+            date: t.date,
+            priority: t.priority || "medium",
+            status: "todo",
+            category: t.category || "content",
+            cash_alert: t.cashAlert || false,
+          }));
+          await supabase.from("planner_tasks").insert(rows);
+        }
+
+        await fetchTasks();
+        toast.success(`${data.tasks.length} tâches générées et sauvegardées`);
       } else {
         toast.warning("Aucune tâche générée. Réessayez.");
       }
@@ -156,14 +218,29 @@ export default function CalendarPlanner() {
     }
   };
 
-  const toggleTaskStatus = (id: string) => {
+  const toggleTaskStatus = async (id: string) => {
+    const task = tasks.find((t) => t.id === id);
+    if (!task) return;
+    const newStatus = task.status === "done" ? "todo" : "done";
+
+    // Optimistic update
     setTasks((prev) =>
-      prev.map((t) =>
-        t.id === id
-          ? { ...t, status: t.status === "done" ? "todo" : "done" }
-          : t
-      )
+      prev.map((t) => (t.id === id ? { ...t, status: newStatus } : t))
     );
+
+    // Persist — only if it's a real UUID (not sample data)
+    if (id.length > 5) {
+      const { error } = await supabase
+        .from("planner_tasks")
+        .update({ status: newStatus })
+        .eq("id", id);
+      if (error) {
+        // Revert on error
+        setTasks((prev) =>
+          prev.map((t) => (t.id === id ? { ...t, status: task.status } : t))
+        );
+      }
+    }
   };
 
   return (
