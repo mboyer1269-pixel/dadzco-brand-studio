@@ -1,9 +1,9 @@
 // DADZCO Pricing Engine
 // Target margin: 58.5%, Buffer: 12% for returns/shipping, Personalization: +15 CAD
 
-/** Format a number as Canadian dollars (e.g. "45,00 $") */
+/** Format a number as Canadian dollars (e.g. "45,00 $ CAD") */
 export function formatCAD(amount: number, decimals = 2): string {
-  return `${amount.toFixed(decimals)} $`;
+  return `${amount.toFixed(decimals)} $ CAD`;
 }
 
 export const PRICING_CONFIG = {

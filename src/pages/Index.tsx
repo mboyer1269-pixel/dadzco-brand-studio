@@ -8,6 +8,7 @@ import {
 import { Link } from "react-router-dom";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import StrategicAlerts from "@/components/StrategicAlerts";
+import { UltraReliableChecklist } from "@/components/UltraReliableChecklist";
 
 const quickActions = [
   { label: "New Design", icon: Sparkles, to: "/generate", desc: "Generate with AI", hint: "AI-powered brand designs" },
@@ -102,10 +103,15 @@ const Dashboard = () => {
           ))}
         </section>
 
-        {/* Strategic Alerts */}
-        <section>
-          <StrategicAlerts compact />
-        </section>
+        {/* Ultra Reliable Mode + Strategic Alerts */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <section>
+            <UltraReliableChecklist />
+          </section>
+          <section>
+            <StrategicAlerts compact />
+          </section>
+        </div>
 
         {/* Recent Designs — Sample Data */}
         <section>

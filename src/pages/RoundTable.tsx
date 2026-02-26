@@ -14,6 +14,7 @@ import {
   ShoppingBag, Palette, MessageSquare, Crown, Laugh, Image, ImagePlus,
   FileDown,
 } from "lucide-react";
+import { RoundTableAgentCards } from "@/components/RoundTableAgentCards";
 
 const AGENT_ICONS: Record<string, string> = {
   brand_strategy: "🎯",
@@ -221,14 +222,10 @@ export default function RoundTable() {
           <p className="text-sm text-muted-foreground font-body italic">
             7 agents collaborent pour générer 3 collections complètes en un seul pass
           </p>
-          <div className="flex flex-wrap gap-2 mt-4">
-            {Object.entries(AGENT_LABELS).map(([key, label]) => (
-              <Badge key={key} variant="secondary" className="text-[10px] font-body">
-                {AGENT_ICONS[key]} {label}
-              </Badge>
-            ))}
-          </div>
         </div>
+
+        {/* Agent Cards */}
+        <RoundTableAgentCards isActive={isGenerating} />
 
         {/* Instructions + Launch */}
         <Card className="border-border">
