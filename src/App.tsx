@@ -13,6 +13,8 @@ import CollectionWizard from "./pages/CollectionWizard";
 import Library from "./pages/Library";
 import Storytelling from "./pages/Storytelling";
 import Exports from "./pages/Exports";
+import BrandBook from "./pages/BrandBook";
+import CalendarPlanner from "./pages/CalendarPlanner";
 import SettingsPage from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound";
 
@@ -65,6 +67,8 @@ const App = () => (
               <Route path="/generate" element={<ProtectedRoute><Generate /></ProtectedRoute>} />
               <Route path="/collections" element={<ProtectedRoute><Collections /></ProtectedRoute>} />
               <Route path="/collections/new" element={<ProtectedRoute><CollectionWizard /></ProtectedRoute>} />
+              <Route path="/brand-book" element={<ProtectedRoute><BrandBook /></ProtectedRoute>} />
+              <Route path="/calendar" element={<ProtectedRoute><CalendarPlanner /></ProtectedRoute>} />
               <Route path="/library" element={<ProtectedRoute><Library /></ProtectedRoute>} />
               <Route path="/storytelling" element={<ProtectedRoute><Storytelling /></ProtectedRoute>} />
               <Route path="/exports" element={<ProtectedRoute><Exports /></ProtectedRoute>} />
