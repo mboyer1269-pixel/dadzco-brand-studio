@@ -5,23 +5,15 @@ import { Input } from "@/components/ui/input";
 import { motion } from "framer-motion";
 
 const Login = () => {
-  const { signInWithMagicLink } = useAuth();
-  const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
-  const [errorMsg, setErrorMsg] = useState("");
+  const { signInWithCode } = useAuth();
+  const [code, setCode] = useState("");
+  const [error, setError] = useState("");
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setStatus("sending");
-    setErrorMsg("");
-
-    const { error } = await signInWithMagicLink(email.trim());
-    if (error) {
-      setStatus("error");
-      setErrorMsg(error.message);
-    } else {
-      setStatus("sent");
-    }
+    setError("");
+    const { error } = signInWithCode(code.trim());
+    if (error) setError(error.message);
   };
 
   return (
@@ -41,51 +33,40 @@ const Login = () => {
           </p>
         </div>
 
-        {status === "sent" ? (
-          <div className="text-center animate-fade-in">
-            <div className="mb-4 h-px w-12 mx-auto bg-secondary" />
-            <p className="font-body text-sm text-foreground">
-              Magic link sent to <span className="font-medium">{email}</span>
-            </p>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Check your inbox and click the link to sign in.
-            </p>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div>
+            <label htmlFor="code" className="block text-xs font-body font-medium tracking-wider uppercase text-muted-foreground mb-2">
+              Code d'accès
+            </label>
+            <Input
+              id="code"
+              type="password"
+              inputMode="numeric"
+              maxLength={4}
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              placeholder="••••"
+              required
+              className="bg-card border-border font-body text-center text-2xl tracking-[0.5em]"
+              autoComplete="off"
+            />
           </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label htmlFor="email" className="block text-xs font-body font-medium tracking-wider uppercase text-muted-foreground mb-2">
-                Email
-              </label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="dadzco.brand@gmail.com"
-                required
-                className="bg-card border-border font-body"
-                autoComplete="email"
-              />
-            </div>
 
-            {status === "error" && (
-              <p className="text-xs text-destructive font-body">{errorMsg}</p>
-            )}
+          {error && (
+            <p className="text-xs text-destructive font-body">{error}</p>
+          )}
 
-            <Button
-              type="submit"
-              disabled={status === "sending"}
-              className="w-full font-body text-xs tracking-wider uppercase"
-            >
-              {status === "sending" ? "Sending…" : "Sign In with Magic Link"}
-            </Button>
+          <Button
+            type="submit"
+            className="w-full font-body text-xs tracking-wider uppercase"
+          >
+            Entrer
+          </Button>
 
-            <p className="text-center text-xs text-muted-foreground font-body">
-              Private access · Authorized administrators only
-            </p>
-          </form>
-        )}
+          <p className="text-center text-xs text-muted-foreground font-body">
+            Accès privé · Administrateurs autorisés uniquement
+          </p>
+        </form>
 
         <div className="mt-16 text-center">
           <p className="text-[10px] tracking-widest uppercase text-muted-foreground font-body">
