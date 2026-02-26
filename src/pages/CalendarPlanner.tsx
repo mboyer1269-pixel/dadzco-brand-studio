@@ -7,6 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import StrategicAlerts from "@/components/StrategicAlerts";
 import {
   CalendarDays,
   ChevronLeft,
@@ -425,6 +426,8 @@ export default function CalendarPlanner() {
 
           {/* Task Sidebar */}
           <div className="space-y-4">
+            {/* Strategic Gates */}
+            <StrategicAlerts compact />
             {/* Cash Alerts */}
             {cashAlerts.length > 0 && (
               <Card className="border-destructive/30">

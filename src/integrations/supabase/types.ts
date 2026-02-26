@@ -405,6 +405,51 @@ export type Database = {
           },
         ]
       }
+      strategic_alerts: {
+        Row: {
+          category: string
+          created_at: string
+          description: string | null
+          id: string
+          is_dismissed: boolean
+          is_read: boolean
+          severity: string
+          title: string
+          trigger_day: number | null
+          trigger_type: string
+          triggered_at: string
+          user_id: string
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_dismissed?: boolean
+          is_read?: boolean
+          severity?: string
+          title: string
+          trigger_day?: number | null
+          trigger_type?: string
+          triggered_at?: string
+          user_id: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_dismissed?: boolean
+          is_read?: boolean
+          severity?: string
+          title?: string
+          trigger_day?: number | null
+          trigger_type?: string
+          triggered_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       tags: {
         Row: {
           created_at: string

@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.generate-tasks]
 verify_jwt = false
+
+[functions.check-gates]
+verify_jwt = false
