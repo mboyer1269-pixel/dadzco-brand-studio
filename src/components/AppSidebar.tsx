@@ -9,6 +9,8 @@ import {
   LogOut,
   Moon,
   Sun,
+  BookOpen,
+  CalendarDays,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/lib/auth";
@@ -29,6 +31,8 @@ import { Button } from "@/components/ui/button";
 
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Brand Book", url: "/brand-book", icon: BookOpen },
+  { title: "Calendar", url: "/calendar", icon: CalendarDays },
   { title: "Generator", url: "/generate", icon: Sparkles },
   { title: "Collections", url: "/collections", icon: FolderOpen },
   { title: "Library", url: "/library", icon: Image },
