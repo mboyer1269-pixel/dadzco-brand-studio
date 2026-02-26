@@ -4,7 +4,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import type { WizardSKU } from "@/lib/collection-types";
-import { calculateSKUPricing, PRICING_CONFIG } from "@/lib/pricing";
+import { calculateSKUPricing, PRICING_CONFIG, formatCAD } from "@/lib/pricing";
 import { DollarSign, TrendingUp, AlertTriangle } from "lucide-react";
 
 interface Props {
@@ -88,7 +88,7 @@ export function WizardStepSKUs({ skus, onUpdateSKU }: Props) {
                       Buffered Cost
                     </Label>
                     <div className="h-10 flex items-center px-3 bg-muted rounded-md">
-                      <span className="text-sm font-body text-foreground">${pricing.bufferedCost.toFixed(2)}</span>
+                      <span className="text-sm font-body text-foreground">{formatCAD(pricing.bufferedCost)}</span>
                     </div>
                   </div>
                   <div>
@@ -116,7 +116,7 @@ export function WizardStepSKUs({ skus, onUpdateSKU }: Props) {
                       Margin (CAD)
                     </Label>
                     <div className="h-10 flex items-center px-3 bg-muted rounded-md">
-                      <span className="text-sm font-body text-foreground">${pricing.margin.toFixed(2)}</span>
+                      <span className="text-sm font-body text-foreground">{formatCAD(pricing.margin)}</span>
                     </div>
                   </div>
                   <div>
@@ -128,7 +128,7 @@ export function WizardStepSKUs({ skus, onUpdateSKU }: Props) {
                         checked={sku.personalization}
                         onCheckedChange={(v) => onUpdateSKU(idx, { personalization: v })}
                       />
-                      <span className="text-xs font-body text-muted-foreground">+$15</span>
+                      <span className="text-xs font-body text-muted-foreground">+{formatCAD(PRICING_CONFIG.personalizationAddon, 0)}</span>
                     </div>
                   </div>
                 </div>
@@ -148,7 +148,7 @@ export function WizardStepSKUs({ skus, onUpdateSKU }: Props) {
           <div className="grid grid-cols-3 gap-4 text-center">
             <div>
               <p className="text-xs text-muted-foreground font-body">Total Retail</p>
-              <p className="text-lg font-display font-light text-foreground">${totalRetail.toFixed(0)}</p>
+              <p className="text-lg font-display font-light text-foreground">{formatCAD(totalRetail, 0)}</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground font-body">Avg Margin</p>
@@ -159,7 +159,7 @@ export function WizardStepSKUs({ skus, onUpdateSKU }: Props) {
             <div>
               <p className="text-xs text-muted-foreground font-body">Bundle +Perso</p>
               <p className="text-lg font-display font-light text-foreground">
-                ${(totalRetail + PRICING_CONFIG.personalizationAddon).toFixed(0)}
+                {formatCAD(totalRetail + PRICING_CONFIG.personalizationAddon, 0)}
               </p>
             </div>
           </div>

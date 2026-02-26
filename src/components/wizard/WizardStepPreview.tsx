@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Download, Save, Image as ImageIcon } from "lucide-react";
 import type { WizardSKU } from "@/lib/collection-types";
-import { PRICING_CONFIG } from "@/lib/pricing";
+import { PRICING_CONFIG, formatCAD } from "@/lib/pricing";
 
 interface Props {
   name: string;
@@ -62,7 +62,7 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving }: Prop
             </div>
             <div>
               <p className="text-xs text-muted-foreground font-body">Total Retail</p>
-              <p className="text-lg font-display font-light text-foreground">${totalRetail.toFixed(0)}</p>
+              <p className="text-lg font-display font-light text-foreground">{formatCAD(totalRetail, 0)}</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground font-body">Avg Margin</p>
@@ -99,7 +99,7 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving }: Prop
                 </div>
                 <h4 className="text-sm font-body font-medium text-foreground">{sku.name}</h4>
                 <div className="flex items-center justify-between mt-2">
-                  <span className="text-sm font-body text-foreground font-medium">${sku.retailPrice}</span>
+                  <span className="text-sm font-body text-foreground font-medium">{formatCAD(sku.retailPrice, 0)}</span>
                   <span className={`text-xs font-body ${sku.marginPct >= 55 ? "text-green-600 dark:text-green-400" : "text-destructive"}`}>
                     {sku.marginPct.toFixed(1)}% margin
                   </span>
