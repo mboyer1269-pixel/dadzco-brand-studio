@@ -75,6 +75,7 @@ FORMAT DE SORTIE (JSON strict) :
 
 Génère EXACTEMENT 3 collections. Chaque collection a EXACTEMENT 7 SKUs (4 quiet + 3 funny).
 Tous les prix sont en CAD. Les marges doivent être validées par le Financial Gatekeeper.
+IMPORTANT: Sois concis dans les notes d'agents (1-2 phrases max par agent). Punchlines courtes. Descriptions Shopify de 2 phrases max.
 Réponds UNIQUEMENT avec le JSON valide, sans texte avant ou après, sans blocs markdown.`;
 
 serve(async (req) => {
@@ -107,13 +108,13 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
+        model: "google/gemini-2.5-flash",
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: userMessage },
         ],
-        temperature: 0.8,
-        max_tokens: 16000,
+        temperature: 0.7,
+        max_tokens: 12000,
         response_format: { type: "json_object" },
       }),
     });
@@ -160,14 +161,30 @@ serve(async (req) => {
     try {
       parsed = JSON.parse(jsonStr);
     } catch {
-      console.error("Failed to parse AI content as JSON:", jsonStr.slice(0, 500));
-      return new Response(JSON.stringify({ 
-        error: "La réponse IA n'était pas du JSON valide. Réessayez.",
-        raw_preview: jsonStr.slice(0, 500),
-      }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      // Try to repair truncated JSON by closing open structures
+      let repaired = jsonStr;
+      // Close any open strings
+      const quoteCount = (repaired.match(/(?<!\\)"/g) || []).length;
+      if (quoteCount % 2 !== 0) repaired += '"';
+      // Try adding closing brackets/braces
+      const opens = (repaired.match(/[\[{]/g) || []).length;
+      const closes = (repaired.match(/[\]}]/g) || []).length;
+      for (let i = 0; i < opens - closes; i++) {
+        // Simple heuristic: close with } or ] based on last opener
+        repaired += "}";
+      }
+      try {
+        parsed = JSON.parse(repaired);
+      } catch {
+        console.error("Failed to parse AI content as JSON:", jsonStr.slice(0, 500));
+        return new Response(JSON.stringify({ 
+          error: "La réponse IA n'était pas du JSON valide. Réessayez.",
+          raw_preview: jsonStr.slice(0, 500),
+        }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     console.log("Success! Collections:", parsed.collections?.length || 0);
