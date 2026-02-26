@@ -6,16 +6,6 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const AGENTS = [
-  "Brand Strategy Specialist",
-  "Creative & Mythology Director",
-  "Artistic Designer",
-  "POD Specialist",
-  "Storytelling Grok",
-  "Growth & Conversion Strategist",
-  "Financial Gatekeeper",
-];
-
 const SYSTEM_PROMPT = `Tu es le "Round Table" de DADZCO — un collectif de 7 agents experts qui collaborent pour créer des collections complètes de vêtements premium.
 
 Les 7 agents :
@@ -58,7 +48,7 @@ FORMAT DE SORTIE (JSON strict) :
       "skus": [
         {
           "name": "Nom du SKU",
-          "type": "quiet | funny",
+          "type": "quiet",
           "products": ["t-shirt", "crewneck", "hoodie"],
           "placement": "Description du placement graphique",
           "adult_base_cost": 18,
@@ -68,7 +58,7 @@ FORMAT DE SORTIE (JSON strict) :
           "bundle_price": 75,
           "bundle_with_perso": 90,
           "margin_pct": 58.5,
-          "mockup_brief": "Brief détaillé pour le mock-up (couleurs, placement, style)",
+          "mockup_brief": "Brief détaillé pour le mock-up",
           "story": {
             "mythology": "Mythologie Écho & Rire (2-3 phrases)",
             "punchlines": ["punchline 1", "punchline 2", "punchline 3"],
@@ -85,7 +75,7 @@ FORMAT DE SORTIE (JSON strict) :
 
 Génère EXACTEMENT 3 collections. Chaque collection a EXACTEMENT 7 SKUs (4 quiet + 3 funny).
 Tous les prix sont en CAD. Les marges doivent être validées par le Financial Gatekeeper.
-Réponds UNIQUEMENT avec le JSON, sans texte avant ou après.`;
+Réponds UNIQUEMENT avec le JSON valide, sans texte avant ou après, sans blocs markdown.`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -96,11 +86,19 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
-    const { customInstructions } = await req.json();
+    let customInstructions = "";
+    try {
+      const body = await req.json();
+      customInstructions = body?.customInstructions || "";
+    } catch {
+      // empty body is fine
+    }
 
     const userMessage = customInstructions
       ? `Génère 3 collections complètes pour DADZCO. Instructions additionnelles : ${customInstructions}`
       : "Génère 3 collections complètes pour DADZCO avec des thèmes variés et créatifs. Mélange les univers : un thème nature/organique, un thème urbain/moderne, un thème héritage/classique.";
+
+    console.log("Calling AI gateway with gemini-2.5-pro...");
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -109,39 +107,51 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-2.5-pro",
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: userMessage },
         ],
         temperature: 0.8,
+        max_tokens: 16000,
+        response_format: { type: "json_object" },
       }),
     });
 
     if (!response.ok) {
+      const errText = await response.text();
+      console.error("AI gateway error:", response.status, errText);
       if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded. Please wait and try again." }), {
+        return new Response(JSON.stringify({ error: "Rate limit exceeded. Réessayez dans quelques secondes." }), {
           status: 429,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted. Please add credits." }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const errText = await response.text();
-      console.error("AI gateway error:", response.status, errText);
-      throw new Error(`AI gateway error: ${response.status}`);
+      throw new Error(`AI gateway error: ${response.status} — ${errText.slice(0, 200)}`);
     }
 
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || "";
+    const rawText = await response.text();
+    console.log("AI response length:", rawText.length);
 
-    // Extract JSON from response (handle markdown code blocks)
-    let jsonStr = content;
-    const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+    let data;
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      console.error("Failed to parse gateway response:", rawText.slice(0, 500));
+      throw new Error("Gateway response was not valid JSON");
+    }
+
+    const content = data.choices?.[0]?.message?.content || "";
+    if (!content) {
+      console.error("Empty content from AI. Full response:", JSON.stringify(data).slice(0, 1000));
+      throw new Error("AI returned empty content");
+    }
+
+    console.log("AI content length:", content.length);
+
+    // Extract JSON — handle possible markdown wrapping
+    let jsonStr = content.trim();
+    const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (jsonMatch) {
       jsonStr = jsonMatch[1].trim();
     }
@@ -150,12 +160,17 @@ serve(async (req) => {
     try {
       parsed = JSON.parse(jsonStr);
     } catch {
-      console.error("Failed to parse AI response as JSON:", content.slice(0, 500));
-      return new Response(JSON.stringify({ error: "AI response was not valid JSON", raw: content.slice(0, 2000) }), {
+      console.error("Failed to parse AI content as JSON:", jsonStr.slice(0, 500));
+      return new Response(JSON.stringify({ 
+        error: "La réponse IA n'était pas du JSON valide. Réessayez.",
+        raw_preview: jsonStr.slice(0, 500),
+      }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    console.log("Success! Collections:", parsed.collections?.length || 0);
 
     return new Response(JSON.stringify(parsed), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
