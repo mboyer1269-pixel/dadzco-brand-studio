@@ -16,20 +16,23 @@ const Storytelling = () => {
               Écho & Rire narratives · Shopify · TikTok · Instagram
             </p>
           </div>
-          <Button className="font-body text-xs tracking-wider uppercase">
+          <Button className="font-body text-xs tracking-wider uppercase btn-glow">
             <Plus className="h-4 w-4 mr-2" />
             New Story
           </Button>
         </div>
 
-        <Card className="border-border border-dashed">
-          <CardContent className="p-12 text-center">
-            <PenTool className="h-8 w-8 mx-auto mb-3 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground font-body">
-              No stories yet. Generate mythology narratives and marketing copy for your designs.
+        <Card className="border-border border-dashed gradient-card-warm">
+          <CardContent className="p-16 text-center echo-motif">
+            <PenTool className="h-10 w-10 mx-auto mb-4 text-muted-foreground" />
+            <p className="font-display text-lg font-light text-foreground mb-1">
+              Every design has a mythology
             </p>
-            <p className="text-xs text-muted-foreground font-body mt-2">
-              Per SKU: mythology, punchlines, Shopify description, TikTok & Instagram captions, hero image brief.
+            <p className="text-sm text-muted-foreground font-body max-w-md mx-auto">
+              Generate Écho & Rire narratives, punchlines, Shopify descriptions, and social captions per SKU.
+            </p>
+            <p className="text-xs text-muted-foreground font-body mt-3 italic">
+              « Dans le silence de la forme, l'écho trouve sa voix… »
             </p>
           </CardContent>
         </Card>

@@ -73,8 +73,8 @@ export function AppSidebar() {
                     <NavLink
                       to={item.url}
                       end={item.url === "/"}
-                      className="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-body text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                      activeClassName="bg-muted text-foreground font-medium"
+                      className="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-body text-muted-foreground hover:bg-lavande/10 hover:text-foreground transition-all duration-200"
+                      activeClassName="bg-lavande/15 text-foreground font-medium"
                     >
                       <item.icon className="h-4 w-4 shrink-0" />
                       {!collapsed && <span>{item.title}</span>}

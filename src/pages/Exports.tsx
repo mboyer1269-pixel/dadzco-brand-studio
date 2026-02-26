@@ -16,20 +16,23 @@ const Exports = () => {
               Printful packs · Shopify listings · Bundle pricing
             </p>
           </div>
-          <Button className="font-body text-xs tracking-wider uppercase">
+          <Button className="font-body text-xs tracking-wider uppercase btn-glow">
             <Plus className="h-4 w-4 mr-2" />
             New Export
           </Button>
         </div>
 
-        <Card className="border-border border-dashed">
-          <CardContent className="p-12 text-center">
-            <Download className="h-8 w-8 mx-auto mb-3 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground font-body">
-              No exports yet. Generate ZIP packs and Shopify listing files from your collections.
+        <Card className="border-border border-dashed gradient-card-warm">
+          <CardContent className="p-16 text-center echo-motif">
+            <Download className="h-10 w-10 mx-auto mb-4 text-muted-foreground" />
+            <p className="font-display text-lg font-light text-foreground mb-1">
+              Production-ready in one click
             </p>
-            <p className="text-xs text-muted-foreground font-body mt-2">
-              Supports: Printful ZIP · Naming conventions · Shopify JSON/CSV · Bundle pricing export
+            <p className="text-sm text-muted-foreground font-body max-w-md mx-auto">
+              Generate ZIP packs, Shopify listings, and bundle pricing exports from your collections.
+            </p>
+            <p className="text-xs text-muted-foreground font-body mt-3">
+              Printful ZIP · Naming conventions · Shopify JSON/CSV · Bundle pricing
             </p>
           </CardContent>
         </Card>
