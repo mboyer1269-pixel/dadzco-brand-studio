@@ -9,7 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { formatCAD } from "@/lib/pricing";
 import {
-  Users, Sparkles, Package, BookOpen, Loader2,
+  Users, Sparkles, Package, BookOpen, Loader2, Save, Check,
   ShoppingBag, Palette, MessageSquare, Crown, Laugh, Image, ImagePlus,
 } from "lucide-react";
 
@@ -79,10 +79,13 @@ export default function RoundTable() {
   const [activeCollection, setActiveCollection] = useState("0");
   const [mockups, setMockups] = useState<MockupMap>({});
   const [generatingMockups, setGeneratingMockups] = useState<Record<string, boolean>>({});
+  const [savedCollections, setSavedCollections] = useState<Record<number, string>>({});
+  const [savingCollection, setSavingCollection] = useState<Record<number, boolean>>({});
 
   const handleGenerate = async () => {
     setIsGenerating(true);
     setMockups({});
+    setSavedCollections({});
     try {
       const { data, error } = await supabase.functions.invoke("round-table", {
         body: { customInstructions: customInstructions.trim() || undefined },
@@ -146,6 +149,39 @@ export default function RoundTable() {
       const key = `${ci}-${si}`;
       if (mockups[key]) continue; // skip already generated
       await handleGenerateMockup(ci, si, collection.skus[si]);
+    }
+  };
+
+  const handleSaveCollection = async (ci: number) => {
+    const collection = collections[ci];
+    if (!collection) return;
+
+    setSavingCollection((prev) => ({ ...prev, [ci]: true }));
+    try {
+      // Gather mockup URLs for this collection's SKUs
+      const skuMockups: Record<number, string> = {};
+      collection.skus?.forEach((_, si) => {
+        const key = `${ci}-${si}`;
+        if (mockups[key]) skuMockups[si] = mockups[key];
+      });
+
+      const { data, error } = await supabase.functions.invoke("save-collection", {
+        body: { collection, mockups: skuMockups },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      setSavedCollections((prev) => ({ ...prev, [ci]: data.collectionId }));
+      toast({
+        title: "Collection sauvegardée",
+        description: `"${collection.name}" enregistrée avec ${data.skuCount} SKUs`,
+      });
+    } catch (e: any) {
+      console.error("Save error:", e);
+      toast({ title: "Erreur", description: e.message, variant: "destructive" });
+    } finally {
+      setSavingCollection((prev) => ({ ...prev, [ci]: false }));
     }
   };
 
@@ -222,6 +258,9 @@ export default function RoundTable() {
                   generatingMockups={generatingMockups}
                   onGenerateMockup={handleGenerateMockup}
                   onGenerateAllMockups={handleGenerateAllMockups}
+                  onSaveCollection={handleSaveCollection}
+                  isSaving={savingCollection[ci] || false}
+                  savedId={savedCollections[ci]}
                 />
               </TabsContent>
             ))}
@@ -239,6 +278,9 @@ interface CollectionViewProps {
   generatingMockups: Record<string, boolean>;
   onGenerateMockup: (ci: number, si: number, sku: SKU) => void;
   onGenerateAllMockups: (ci: number) => void;
+  onSaveCollection: (ci: number) => void;
+  isSaving: boolean;
+  savedId?: string;
 }
 
 function CollectionView({
@@ -248,6 +290,9 @@ function CollectionView({
   generatingMockups,
   onGenerateMockup,
   onGenerateAllMockups,
+  onSaveCollection,
+  isSaving,
+  savedId,
 }: CollectionViewProps) {
   const generatedCount = collection.skus?.filter((_, si) => mockups[`${collectionIndex}-${si}`]).length || 0;
   const totalSkus = collection.skus?.length || 0;
@@ -278,8 +323,8 @@ function CollectionView({
             </div>
           </div>
 
-          {/* Generate All Mockups Button */}
-          <div className="pt-2 border-t border-border mt-3">
+          {/* Action Buttons */}
+          <div className="pt-2 border-t border-border mt-3 flex flex-wrap gap-2">
             <Button
               variant="outline"
               size="sm"
@@ -301,6 +346,30 @@ function CollectionView({
                 <>
                   <ImagePlus className="h-3 w-3 mr-1.5" />
                   Générer tous les mock-ups ({generatedCount}/{totalSkus})
+                </>
+              )}
+            </Button>
+
+            <Button
+              size="sm"
+              onClick={() => onSaveCollection(collectionIndex)}
+              disabled={isSaving || !!savedId}
+              className="font-body text-[10px] tracking-wider uppercase"
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
+                  Sauvegarde…
+                </>
+              ) : savedId ? (
+                <>
+                  <Check className="h-3 w-3 mr-1.5" />
+                  Sauvegardée ✓
+                </>
+              ) : (
+                <>
+                  <Save className="h-3 w-3 mr-1.5" />
+                  Sauvegarder en Collection
                 </>
               )}
             </Button>
