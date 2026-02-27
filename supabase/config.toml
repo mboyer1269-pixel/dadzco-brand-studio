@@ -29,3 +29,9 @@ verify_jwt = false
 
 [functions.lifecycle-gate]
 verify_jwt = false
+
+[functions.approve-hq]
+verify_jwt = false
+
+[functions.create-export-pack]
+verify_jwt = false

@@ -638,10 +638,71 @@ function StepQA({
   isRunning: boolean;
   onRunQA: () => void;
 }) {
+  const { toast } = useToast();
+  const [isPromoting, setIsPromoting] = useState(false);
+  const [collectionId, setCollectionId] = useState<string | null>(null);
+  const [isApproving, setIsApproving] = useState(false);
+  const [approveResult, setApproveResult] = useState<{ approved: boolean; failures?: any[] } | null>(null);
+
   const getScoreStatus = (score: number) => {
     if (score >= 85) return { label: "Approved", variant: "default" as const, color: "text-foreground" };
     if (score >= 70) return { label: "Review", variant: "secondary" as const, color: "text-muted-foreground" };
     return { label: "High Risk", variant: "destructive" as const, color: "text-destructive" };
+  };
+
+  const handlePromote = async () => {
+    setIsPromoting(true);
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) throw new Error("Not authenticated");
+
+      const { data, error } = await supabase.from("collections").insert([{
+        name: concept.name,
+        description: concept.theme,
+        season: concept.palette.join(", "),
+        user_id: userData.user.id,
+        status: "draft",
+        lifecycle_status: "idea",
+        metadata: { source: "round_table", palette: concept.palette, skus: concept.skus } as any,
+      }]).select().single();
+
+      if (error) throw error;
+      setCollectionId(data.id);
+      toast({ title: "Collection créée", description: `"${concept.name}" ajoutée aux Collections` });
+    } catch (e: unknown) {
+      toast({ title: "Erreur", description: e instanceof Error ? e.message : "Unknown", variant: "destructive" });
+    } finally {
+      setIsPromoting(false);
+    }
+  };
+
+  const handleApproveHQ = async () => {
+    if (!collectionId) return;
+    setIsApproving(true);
+    setApproveResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("approve-hq", {
+        body: { collectionId },
+      });
+      if (error) {
+        // Edge function returned non-2xx
+        const parsed = typeof error === "object" ? error : { message: String(error) };
+        setApproveResult({ approved: false, failures: [{ gate: "invoke", message: parsed.message || "Error" }] });
+        toast({ title: "Gate check failed", description: parsed.message, variant: "destructive" });
+        return;
+      }
+      if (data?.approved === false) {
+        setApproveResult({ approved: false, failures: data.failures });
+        toast({ title: "Gates not passed", description: `${data.failures?.length} gate(s) failed`, variant: "destructive" });
+      } else {
+        setApproveResult({ approved: true });
+        toast({ title: "Approved for HQ ✓", description: "Collection approved for production" });
+      }
+    } catch (e: unknown) {
+      toast({ title: "Erreur", description: e instanceof Error ? e.message : "Unknown", variant: "destructive" });
+    } finally {
+      setIsApproving(false);
+    }
   };
 
   return (
@@ -695,18 +756,58 @@ function StepQA({
             </div>
           )}
 
-          <Button
-            className="font-body text-xs tracking-[0.15em] uppercase h-10"
-            onClick={() => {
-              // TODO: promote to collection
-            }}
-          >
-            <FolderOpen className="h-3 w-3 mr-2" />
-            Promote to Collection
-          </Button>
+          <div className="flex gap-2 flex-wrap">
+            {!collectionId && (
+              <Button
+                className="font-body text-xs tracking-[0.15em] uppercase h-10"
+                onClick={handlePromote}
+                disabled={isPromoting}
+              >
+                {isPromoting ? (
+                  <><Loader2 className="h-3 w-3 mr-2 animate-spin" />Promoting…</>
+                ) : (
+                  <><FolderOpen className="h-3 w-3 mr-2" />Promote to Collection</>
+                )}
+              </Button>
+            )}
+
+            {collectionId && (
+              <>
+                <Badge variant="default" className="text-xs font-body h-10 px-4 flex items-center">
+                  <Check className="h-3 w-3 mr-1" /> Collection Created
+                </Badge>
+                <Button
+                  variant="outline"
+                  className="font-body text-xs tracking-[0.15em] uppercase h-10"
+                  onClick={handleApproveHQ}
+                  disabled={isApproving || approveResult?.approved === true}
+                >
+                  {isApproving ? (
+                    <><Loader2 className="h-3 w-3 mr-2 animate-spin" />Checking gates…</>
+                  ) : approveResult?.approved ? (
+                    <><Check className="h-3 w-3 mr-2" />Approved for HQ</>
+                  ) : (
+                    <><ShieldCheck className="h-3 w-3 mr-2" />Approve for HQ</>
+                  )}
+                </Button>
+              </>
+            )}
+          </div>
+
+          {/* Gate failures */}
+          {approveResult && !approveResult.approved && approveResult.failures && (
+            <div className="space-y-1.5 mt-2">
+              {approveResult.failures.map((f: any, i: number) => (
+                <div key={i} className="p-2.5 rounded-md bg-destructive/10 border border-destructive/20">
+                  <p className="text-xs font-body text-foreground">
+                    <span className="font-medium text-destructive">{f.gate}:</span> {f.message}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 }
-

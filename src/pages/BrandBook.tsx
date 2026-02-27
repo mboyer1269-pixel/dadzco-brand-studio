@@ -138,11 +138,33 @@ export default function BrandBook() {
       if (error) throw error;
       const rules = (data || []) as unknown as BrandRules[];
       setExtractedRules(rules);
-      setDnaLocked(rules.length > 0);
+      // rules_locked is persisted in DB
+      setDnaLocked(rules.some((r: any) => r.rules_locked === true));
     } catch {
       // silently fail
     }
   }, []);
+
+  const toggleRulesLock = async () => {
+    if (extractedRules.length === 0) {
+      toast.error("Aucune règle à verrouiller. Uploadez un Brand Book d'abord.");
+      return;
+    }
+    const newLocked = !dnaLocked;
+    try {
+      // Update all brand_rules for this user
+      for (const rule of extractedRules) {
+        await supabase
+          .from("brand_rules")
+          .update({ rules_locked: newLocked } as any)
+          .eq("id", rule.id);
+      }
+      setDnaLocked(newLocked);
+      toast.success(newLocked ? "Règles brand verrouillées ✓" : "Règles brand déverrouillées");
+    } catch {
+      toast.error("Erreur lors du verrouillage des règles.");
+    }
+  };
 
   useEffect(() => {
     fetchFiles();
@@ -472,6 +494,17 @@ export default function BrandBook() {
                   >
                     <RotateCcw className="h-3 w-3" />
                     Réessayer l'extraction IA
+                  </Button>
+                )}
+                {!extracting && extractedRules.length > 0 && (
+                  <Button
+                    variant={dnaLocked ? "default" : "outline"}
+                    size="sm"
+                    className="mt-3 w-full text-xs font-body gap-2"
+                    onClick={toggleRulesLock}
+                  >
+                    <Lock className="h-3 w-3" />
+                    {dnaLocked ? "Déverrouiller les règles" : "Verrouiller les règles"}
                   </Button>
                 )}
               </CardContent>
