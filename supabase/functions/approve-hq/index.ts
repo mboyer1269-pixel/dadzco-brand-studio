@@ -76,13 +76,15 @@ serve(async (req) => {
       .limit(1);
     const latestScore = scores?.[0];
 
-    // Fetch brand_rules locked status
-    const { data: brandRules } = await supabase
+    // FIX 2: Fetch brand_rules with unique user_id (single row)
+    const { data: brandRule } = await supabase
       .from("brand_rules")
       .select("rules_locked")
       .eq("user_id", userId)
-      .limit(1);
-    const rulesLocked = brandRules?.some((r: any) => r.rules_locked === true) ?? false;
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .single();
+    const rulesLocked = brandRule?.rules_locked === true;
 
     // Run gate checks
     const failures: GateFailure[] = [];
@@ -93,9 +95,23 @@ serve(async (req) => {
       failures.push({ gate: "has_items", message: "Collection must have at least 1 SKU" });
     }
 
-    // Gate 2: avg margin >= 55%
-    const margins = items.filter((i: any) => i.margin != null).map((i: any) => Number(i.margin));
-    const avgMargin = margins.length > 0 ? margins.reduce((a: number, b: number) => a + b, 0) / margins.length : 0;
+    // FIX 3: Gate 2 — SKU completeness (all items must have retail_price, cost, margin)
+    const incompleteSkus = items.filter(
+      (i: any) => i.retail_price == null || i.cost == null || i.margin == null
+    );
+    if (incompleteSkus.length > 0) {
+      failures.push({
+        gate: "sku_completeness",
+        message: `${incompleteSkus.length} SKU(s) missing retail_price, cost, or margin`,
+        value: items.length - incompleteSkus.length,
+        threshold: items.length,
+      });
+    }
+
+    // FIX 4: Gate 3 — avg margin over ALL items (completeness enforced above)
+    const avgMargin = items.length > 0
+      ? items.reduce((sum: number, i: any) => sum + Number(i.margin || 0), 0) / items.length
+      : 0;
     if (avgMargin < 55) {
       failures.push({
         gate: "margin_minimum",
@@ -105,7 +121,7 @@ serve(async (req) => {
       });
     }
 
-    // Gate 3: ADN alignment >= 80
+    // Gate 4: ADN alignment >= 80
     const adnScore = latestScore?.adn_alignment ?? 0;
     if (adnScore < 80) {
       failures.push({
@@ -116,7 +132,7 @@ serve(async (req) => {
       });
     }
 
-    // Gate 4: final_score >= 80
+    // Gate 5: final_score >= 80
     const finalScore = latestScore?.final_score ?? 0;
     if (finalScore < 80) {
       failures.push({
@@ -127,7 +143,7 @@ serve(async (req) => {
       });
     }
 
-    // Gate 5: brand_rules_locked
+    // Gate 6: brand_rules_locked
     if (!rulesLocked) {
       failures.push({
         gate: "brand_rules_locked",
@@ -145,7 +161,7 @@ serve(async (req) => {
 
     // All gates pass — update collection
     const hasNegativeProfit = items.some(
-      (i: any) => i.retail_price != null && i.cost != null && Number(i.retail_price) <= Number(i.cost)
+      (i: any) => Number(i.retail_price) <= Number(i.cost)
     );
 
     const updateData: Record<string, unknown> = {
@@ -169,13 +185,13 @@ serve(async (req) => {
       });
     }
 
-    // Log event
+    // Log event — gate_results null on full pass (not empty array)
     await supabase.from("collection_events").insert({
       collection_id: collectionId,
       event_type: "approve_for_hq",
       from_status: collection.lifecycle_status,
       to_status: "approved_for_production",
-      gate_results: failures,
+      gate_results: null,
       forced: false,
       user_id: userId,
     });

@@ -37,17 +37,20 @@ serve(async (req) => {
       );
     }
 
-    // Log production job if DB available
-    let jobId: string | null = null;
     let supabase: any = null;
     if (SUPABASE_URL && SERVICE_ROLE_KEY) {
       supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+    }
+
+    // FIX 6: Only create production_jobs for production=true
+    let jobId: string | null = null;
+    if (isProduction && supabase) {
       const { data: job } = await supabase
         .from("production_jobs")
         .insert({
           collection_id: collectionId || null,
           sku_id: skuId || skuName || null,
-          provider: LEONARDO_API_KEY ? "leonardo" : "stub",
+          provider: "leonardo",
           model_id: "aa77f04e-3eec-4034-9c07-d0f619684628",
           status: "started",
           started_at: new Date().toISOString(),
@@ -55,6 +58,18 @@ serve(async (req) => {
         .select("id")
         .single();
       jobId = job?.id || null;
+    }
+
+    // FIX 6: For preview, log to ai_generation_logs instead
+    if (!isProduction && supabase) {
+      await supabase.from("ai_generation_logs").insert({
+        task_type: "mockup_preview",
+        model_provider: LEONARDO_API_KEY ? "leonardo" : "stub",
+        model_used: LEONARDO_API_KEY ? "leonardo-flux" : "placeholder",
+        status: "success",
+        collection_id: collectionId || null,
+        metadata: { skuName, skuId, prompt: prompt.slice(0, 200) },
+      });
     }
 
     // If Leonardo key is configured, use real generation
@@ -86,7 +101,6 @@ serve(async (req) => {
         const errText = await createRes.text();
         console.error("Leonardo create error:", createRes.status, errText);
 
-        // Update job as failed
         if (supabase && jobId) {
           await supabase
             .from("production_jobs")
@@ -174,14 +188,6 @@ serve(async (req) => {
     // Stub mode: return placeholder with watermark (only for non-production)
     console.log("No LEONARDO_API_KEY — returning stub placeholder");
     const placeholderUrl = `https://placehold.co/1024x1024/1a1a2e/ffffff?text=CONCEPT+ONLY%0A${encodeURIComponent(skuName || "SKU")}`;
-
-    if (supabase && jobId) {
-      await supabase.from("production_jobs").update({
-        status: "completed",
-        image_url: placeholderUrl,
-        completed_at: new Date().toISOString(),
-      }).eq("id", jobId);
-    }
 
     return new Response(
       JSON.stringify({ imageUrl: placeholderUrl, generationId: "stub", watermark: "CONCEPT ONLY" }),

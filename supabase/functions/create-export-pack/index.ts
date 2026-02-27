@@ -54,7 +54,7 @@ serve(async (req) => {
       });
     }
 
-    // Fetch collection + items + designs
+    // FIX 5: Fetch collection + items + designs ordered deterministically
     const { data: collection, error: fetchErr } = await supabase
       .from("collections")
       .select("*, collection_items(*, designs(*))")
@@ -79,14 +79,53 @@ serve(async (req) => {
       );
     }
 
-    // Build deterministic manifest
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    const collectionSlug = slugify(collection.name);
-    const folderPath = `/EXPORTS/${collectionSlug}/${timestamp}`;
+    // FIX 1: Check for existing pack to determine version
+    const { data: existingPacks } = await supabase
+      .from("export_packs")
+      .select("version")
+      .eq("collection_id", collectionId)
+      .order("version", { ascending: false })
+      .limit(1);
+    const nextVersion = (existingPacks?.[0]?.version ?? 0) + 1;
 
+    const collectionSlug = slugify(collection.name);
+
+    // FIX 1: Create export_packs row FIRST to get stable pack.id
+    const { data: pack, error: packErr } = await supabase
+      .from("export_packs")
+      .insert({
+        collection_id: collectionId,
+        manifest: {}, // placeholder, updated below
+        folder_path: "", // placeholder, updated below
+        status: "created",
+        created_by: userId,
+        version: nextVersion,
+      })
+      .select()
+      .single();
+
+    if (packErr || !pack) {
+      return new Response(JSON.stringify({ error: `Failed to create export pack: ${packErr?.message}` }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // FIX 1: Deterministic folder_path using pack.id (no timestamps)
+    const folderPath = `/EXPORTS/${collectionSlug}/${pack.id}`;
+
+    // Build manifest
     const items = collection.collection_items || [];
     const skuManifest = items.map((item: any, idx: number) => {
-      const design = item.designs;
+      // FIX 5: designs may be array — pick first deterministically (by created_at desc)
+      let design = item.designs;
+      if (Array.isArray(design)) {
+        design = design.sort((a: any, b: any) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        )[0] || null;
+      }
+
+      const skuSlug = slugify(item.sku || `sku-${idx + 1}`);
       return {
         skuId: item.id,
         skuName: item.sku || design?.title || `SKU-${idx + 1}`,
@@ -96,8 +135,8 @@ serve(async (req) => {
         margin: item.margin,
         selectedMockupUrl: design?.image_url || null,
         printfilePlaceholders: [
-          `${folderPath}/PRINTFILES/FRONT/${slugify(item.sku || `sku-${idx + 1}`)}-front.png`,
-          `${folderPath}/PRINTFILES/BACK/${slugify(item.sku || `sku-${idx + 1}`)}-back.png`,
+          `${folderPath}/PRINTFILES/FRONT/${skuSlug}-front.png`,
+          `${folderPath}/PRINTFILES/BACK/${skuSlug}-back.png`,
         ],
       };
     });
@@ -108,6 +147,7 @@ serve(async (req) => {
       season: collection.season,
       status: collection.lifecycle_status,
       createdAt: new Date().toISOString(),
+      version: nextVersion,
       folderStructure: {
         root: folderPath,
         mockupsHQ: `${folderPath}/MOCKUPS/HQ/`,
@@ -119,24 +159,14 @@ serve(async (req) => {
       skus: skuManifest,
     };
 
-    // Save export_pack
-    const { data: pack, error: packErr } = await supabase
+    // Update pack with real manifest and folder_path
+    const { error: updatePackErr } = await supabase
       .from("export_packs")
-      .insert({
-        collection_id: collectionId,
-        manifest,
-        folder_path: folderPath,
-        status: "created",
-        created_by: userId,
-      })
-      .select()
-      .single();
+      .update({ manifest, folder_path: folderPath })
+      .eq("id", pack.id);
 
-    if (packErr || !pack) {
-      return new Response(JSON.stringify({ error: `Failed to create export pack: ${packErr?.message}` }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (updatePackErr) {
+      console.error("Failed to update pack manifest:", updatePackErr);
     }
 
     // Save export_pack_items
@@ -173,10 +203,10 @@ serve(async (req) => {
       user_id: userId,
     });
 
-    console.log(`[create-export-pack] ${collectionId}: pack ${pack.id} created`);
+    console.log(`[create-export-pack] ${collectionId}: pack ${pack.id} v${nextVersion} created`);
 
     return new Response(
-      JSON.stringify({ exportPackId: pack.id, manifest }),
+      JSON.stringify({ exportPackId: pack.id, version: nextVersion, manifest }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e) {
