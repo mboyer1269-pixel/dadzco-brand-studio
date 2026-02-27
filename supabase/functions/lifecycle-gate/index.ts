@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -27,14 +27,19 @@ interface GateResult {
   threshold?: number;
 }
 
+interface CollectionItem {
+  margin: number | null;
+  retail_price: number | null;
+  cost: number | null;
+}
+
 async function checkGates(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   collectionId: string,
   targetStatus: string
 ): Promise<GateResult[]> {
   const results: GateResult[] = [];
 
-  // Fetch collection with items
   const { data: collection } = await supabase
     .from("collections")
     .select("*, collection_items(*)")
@@ -45,7 +50,6 @@ async function checkGates(
     return [{ passed: false, gate: "existence", message: "Collection not found" }];
   }
 
-  // Fetch latest scores
   const { data: scores } = await supabase
     .from("collection_scores")
     .select("*")
@@ -55,12 +59,10 @@ async function checkGates(
 
   const latestScore = scores?.[0];
 
-  // ── Gates for APPROVED_FOR_PRODUCTION ──
   if (targetStatus === "approved_for_production") {
-    // Gate 1: Margin >= 55%
-    const items = collection.collection_items || [];
-    const margins = items.filter((i: { margin: number | null }) => i.margin != null).map((i: { margin: number }) => i.margin);
-    const avgMargin = margins.length > 0 ? margins.reduce((a: number, b: number) => a + b, 0) / margins.length : 0;
+    const items: CollectionItem[] = collection.collection_items || [];
+    const margins = items.filter((i) => i.margin != null).map((i) => i.margin as number);
+    const avgMargin = margins.length > 0 ? margins.reduce((a, b) => a + b, 0) / margins.length : 0;
     results.push({
       passed: avgMargin >= 55,
       gate: "margin_minimum",
@@ -71,7 +73,6 @@ async function checkGates(
       threshold: 55,
     });
 
-    // Gate 2: ADN Score >= 80%
     const adnScore = latestScore?.adn_alignment ?? 0;
     results.push({
       passed: adnScore >= 80,
@@ -83,7 +84,6 @@ async function checkGates(
       threshold: 80,
     });
 
-    // Gate 3: Collection must be scored
     results.push({
       passed: !!latestScore,
       gate: "scoring_required",
@@ -93,13 +93,11 @@ async function checkGates(
     });
   }
 
-  // ── Gates for READY_FOR_EXPORT (Financial Gatekeeper) ──
   if (targetStatus === "ready_for_export") {
-    const items = collection.collection_items || [];
-    const margins = items.filter((i: { margin: number | null }) => i.margin != null).map((i: { margin: number }) => i.margin);
-    const avgMargin = margins.length > 0 ? margins.reduce((a: number, b: number) => a + b, 0) / margins.length : 0;
+    const items: CollectionItem[] = collection.collection_items || [];
+    const margins = items.filter((i) => i.margin != null).map((i) => i.margin as number);
+    const avgMargin = margins.length > 0 ? margins.reduce((a, b) => a + b, 0) / margins.length : 0;
 
-    // Gate: Margin >= 55%
     results.push({
       passed: avgMargin >= 55,
       gate: "financial_margin",
@@ -110,10 +108,8 @@ async function checkGates(
       threshold: 55,
     });
 
-    // Gate: No negative profit
     const negativeProfitItems = items.filter(
-      (i: { retail_price: number | null; cost: number | null }) =>
-        i.retail_price != null && i.cost != null && i.retail_price <= i.cost
+      (i) => i.retail_price != null && i.cost != null && (i.retail_price as number) <= (i.cost as number)
     );
     results.push({
       passed: negativeProfitItems.length === 0,
@@ -123,7 +119,6 @@ async function checkGates(
         : `${negativeProfitItems.length} SKU(s) en profit négatif — EXPORT BLOQUÉ`,
     });
 
-    // Gate: At least 1 item
     results.push({
       passed: items.length > 0,
       gate: "has_items",
@@ -133,7 +128,6 @@ async function checkGates(
     });
   }
 
-  // ── Gates for EXPORTED ──
   if (targetStatus === "exported") {
     results.push({
       passed: collection.financial_gate_passed === true,
@@ -147,6 +141,28 @@ async function checkGates(
   return results;
 }
 
+// ─── Auth Helper ────────────────────────────────────────────────────
+async function authenticateRequest(req: Request): Promise<string> {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    throw new Error("Unauthorized");
+  }
+
+  const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+  const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: { headers: { Authorization: authHeader } },
+  });
+
+  const token = authHeader.replace("Bearer ", "");
+  const { data, error } = await supabase.auth.getClaims(token);
+  if (error || !data?.claims) {
+    throw new Error("Unauthorized");
+  }
+
+  return data.claims.sub as string;
+}
+
 // ─── Main Handler ───────────────────────────────────────────────────
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -154,6 +170,8 @@ serve(async (req) => {
   }
 
   try {
+    await authenticateRequest(req);
+
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
@@ -163,7 +181,6 @@ serve(async (req) => {
       throw new Error("Missing collectionId or targetStatus");
     }
 
-    // Get current status
     const { data: collection, error: fetchErr } = await supabase
       .from("collections")
       .select("lifecycle_status")
@@ -175,8 +192,6 @@ serve(async (req) => {
     }
 
     const currentStatus = collection.lifecycle_status;
-
-    // Validate transition
     const allowedTransitions = VALID_TRANSITIONS[currentStatus] || [];
     if (!allowedTransitions.includes(targetStatus)) {
       return new Response(
@@ -188,7 +203,6 @@ serve(async (req) => {
       );
     }
 
-    // Run gate checks
     const gateResults = await checkGates(supabase, collectionId, targetStatus);
     const allPassed = gateResults.length === 0 || gateResults.every((g) => g.passed);
 
@@ -203,10 +217,7 @@ serve(async (req) => {
       );
     }
 
-    // Update status
     const updateData: Record<string, unknown> = { lifecycle_status: targetStatus };
-
-    // Set flags based on target
     if (targetStatus === "approved_for_production") {
       updateData.margin_validated = true;
     }
@@ -235,9 +246,10 @@ serve(async (req) => {
     );
   } catch (e) {
     console.error("[Lifecycle Gate] Error:", e);
+    const isAuth = e instanceof Error && e.message === "Unauthorized";
     return new Response(
       JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: isAuth ? 401 : 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });

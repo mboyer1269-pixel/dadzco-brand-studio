@@ -81,6 +81,7 @@ export async function callAIGateway(
       },
       collectionId: options?.collectionId,
       designId: options?.designId,
+      // userId is now derived from JWT server-side — not sent from client
     },
   });
 

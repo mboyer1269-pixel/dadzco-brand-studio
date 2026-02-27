@@ -8,16 +8,16 @@ const corsHeaders = {
 };
 
 // ─── Task-to-Model Routing Table ────────────────────────────────────
-type TaskType = "strategy" | "storytelling" | "mockup" | "production" | "scoring" | "general";
+export type TaskType = "strategy" | "storytelling" | "mockup" | "production" | "scoring" | "general";
 
-interface ModelConfig {
+export interface ModelConfig {
   model: string;
   provider: "lovable_gateway" | "leonardo";
   endpoint: string;
-  estimatedCostPer1k: number; // placeholder cost per 1k tokens in USD
+  estimatedCostPer1k: number;
 }
 
-const MODEL_ROUTES: Record<TaskType, ModelConfig[]> = {
+export const MODEL_ROUTES: Record<TaskType, ModelConfig[]> = {
   strategy: [
     { model: "openai/gpt-5", provider: "lovable_gateway", endpoint: "https://ai.gateway.lovable.dev/v1/chat/completions", estimatedCostPer1k: 0.03 },
     { model: "google/gemini-2.5-pro", provider: "lovable_gateway", endpoint: "https://ai.gateway.lovable.dev/v1/chat/completions", estimatedCostPer1k: 0.01 },
@@ -27,8 +27,8 @@ const MODEL_ROUTES: Record<TaskType, ModelConfig[]> = {
     { model: "google/gemini-2.5-flash", provider: "lovable_gateway", endpoint: "https://ai.gateway.lovable.dev/v1/chat/completions", estimatedCostPer1k: 0.005 },
   ],
   mockup: [
-    { model: "google/gemini-3-flash-preview", provider: "lovable_gateway", endpoint: "https://ai.gateway.lovable.dev/v1/chat/completions", estimatedCostPer1k: 0.002 },
     { model: "google/gemini-2.5-flash", provider: "lovable_gateway", endpoint: "https://ai.gateway.lovable.dev/v1/chat/completions", estimatedCostPer1k: 0.005 },
+    { model: "openai/gpt-5-mini", provider: "lovable_gateway", endpoint: "https://ai.gateway.lovable.dev/v1/chat/completions", estimatedCostPer1k: 0.01 },
   ],
   production: [
     { model: "leonardo-kino-xl", provider: "leonardo", endpoint: "https://cloud.leonardo.ai/api/rest/v1/generations", estimatedCostPer1k: 0.05 },
@@ -38,16 +38,38 @@ const MODEL_ROUTES: Record<TaskType, ModelConfig[]> = {
     { model: "openai/gpt-5-mini", provider: "lovable_gateway", endpoint: "https://ai.gateway.lovable.dev/v1/chat/completions", estimatedCostPer1k: 0.01 },
   ],
   general: [
-    { model: "google/gemini-3-flash-preview", provider: "lovable_gateway", endpoint: "https://ai.gateway.lovable.dev/v1/chat/completions", estimatedCostPer1k: 0.002 },
     { model: "google/gemini-2.5-flash", provider: "lovable_gateway", endpoint: "https://ai.gateway.lovable.dev/v1/chat/completions", estimatedCostPer1k: 0.005 },
+    { model: "openai/gpt-5-nano", provider: "lovable_gateway", endpoint: "https://ai.gateway.lovable.dev/v1/chat/completions", estimatedCostPer1k: 0.002 },
   ],
 };
+
+// ─── Auth Helper ────────────────────────────────────────────────────
+async function authenticateRequest(req: Request): Promise<string> {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    throw new Error("Unauthorized: missing Authorization header");
+  }
+
+  const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+  const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: { headers: { Authorization: authHeader } },
+  });
+
+  const token = authHeader.replace("Bearer ", "");
+  const { data, error } = await supabase.auth.getClaims(token);
+  if (error || !data?.claims) {
+    throw new Error("Unauthorized: invalid token");
+  }
+
+  return data.claims.sub as string;
+}
 
 // ─── Gateway Call with Fallback ─────────────────────────────────────
 async function callGateway(
   config: ModelConfig,
   messages: Array<{ role: string; content: string }>,
-  options: { temperature?: number; max_tokens?: number; response_format?: unknown; tools?: unknown[]; tool_choice?: unknown } = {}
+  options: Record<string, unknown> = {}
 ): Promise<{ content: string; usage: { input: number; output: number }; raw: unknown }> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
@@ -55,8 +77,8 @@ async function callGateway(
   const body: Record<string, unknown> = {
     model: config.model,
     messages,
-    temperature: options.temperature ?? 0.7,
-    max_tokens: options.max_tokens ?? 4000,
+    temperature: (options.temperature as number) ?? 0.7,
+    max_tokens: (options.max_tokens as number) ?? 4000,
   };
   if (options.response_format) body.response_format = options.response_format;
   if (options.tools) body.tools = options.tools;
@@ -93,7 +115,16 @@ async function routeTask(
   taskType: TaskType,
   messages: Array<{ role: string; content: string }>,
   options: Record<string, unknown> = {}
-): Promise<{ content: string; modelUsed: string; provider: string; fallbackUsed: boolean; fallbackFrom: string | null; usage: { input: number; output: number }; estimatedCost: number; durationMs: number }> {
+): Promise<{
+  content: string;
+  modelUsed: string;
+  provider: string;
+  fallbackUsed: boolean;
+  fallbackFrom: string | null;
+  usage: { input: number; output: number };
+  estimatedCost: number;
+  durationMs: number;
+}> {
   const routes = MODEL_ROUTES[taskType] || MODEL_ROUTES.general;
   let lastError: Error | null = null;
   let fallbackFrom: string | null = null;
@@ -101,8 +132,17 @@ async function routeTask(
   for (let i = 0; i < routes.length; i++) {
     const config = routes[i];
     if (config.provider === "leonardo") {
-      // Leonardo has its own pipeline — skip gateway calls
-      throw new Error("Production mode requires Leonardo pipeline. Use generate-mockup function directly.");
+      // Production requires dedicated Leonardo pipeline
+      return {
+        content: "",
+        modelUsed: config.model,
+        provider: "leonardo",
+        fallbackUsed: false,
+        fallbackFrom: null,
+        usage: { input: 0, output: 0 },
+        estimatedCost: 0,
+        durationMs: 0,
+      };
     }
 
     const start = Date.now();
@@ -148,7 +188,7 @@ async function logGeneration(result: {
   collectionId?: string;
   designId?: string;
   userId?: string;
-}) {
+}): Promise<void> {
   try {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -182,7 +222,10 @@ serve(async (req) => {
   }
 
   try {
-    const { taskType, messages, options, collectionId, designId, userId } = await req.json();
+    // Authenticate and get verified userId
+    const verifiedUserId = await authenticateRequest(req);
+
+    const { taskType, messages, options, collectionId, designId } = await req.json();
 
     if (!taskType || !messages?.length) {
       throw new Error("Missing taskType or messages");
@@ -197,17 +240,17 @@ serve(async (req) => {
     if (taskType === "production") {
       return new Response(
         JSON.stringify({
-          error: "Production mode requires the generate-mockup endpoint with Leonardo. Use that function directly.",
-          redirect: "generate-mockup",
+          error: "Production mode requires the generate-production endpoint for Leonardo HD rendering.",
+          redirect: "generate-production",
         }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     const result = await routeTask(taskType as TaskType, messages, options || {});
 
-    // Log async — don't block response
-    logGeneration({
+    // Await log to avoid dropped logs in edge runtime
+    await logGeneration({
       taskType,
       modelUsed: result.modelUsed,
       provider: result.provider,
@@ -219,7 +262,7 @@ serve(async (req) => {
       status: "success",
       collectionId,
       designId,
-      userId,
+      userId: verifiedUserId,
     });
 
     return new Response(
@@ -238,11 +281,19 @@ serve(async (req) => {
   } catch (e) {
     console.error("[AI Gateway] Error:", e);
 
-    // Try to log failure
+    const isAuthError = e instanceof Error && e.message.startsWith("Unauthorized");
+    if (isAuthError) {
+      return new Response(
+        JSON.stringify({ error: e.message }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Log failure
     try {
-      const body = await req.clone().json().catch(() => ({}));
-      logGeneration({
-        taskType: body.taskType || "unknown",
+      const body = await req.clone().json().catch(() => ({})) as Record<string, unknown>;
+      await logGeneration({
+        taskType: (body.taskType as string) || "unknown",
         modelUsed: "none",
         provider: "none",
         fallbackUsed: false,
@@ -252,9 +303,8 @@ serve(async (req) => {
         durationMs: 0,
         status: "error",
         errorMessage: e instanceof Error ? e.message : "Unknown",
-        collectionId: body.collectionId,
-        designId: body.designId,
-        userId: body.userId,
+        collectionId: body.collectionId as string | undefined,
+        designId: body.designId as string | undefined,
       });
     } catch { /* ignore */ }
 
