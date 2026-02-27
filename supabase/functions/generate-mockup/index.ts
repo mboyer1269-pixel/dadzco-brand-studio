@@ -41,29 +41,19 @@ serve(async (req) => {
       supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
     }
 
-    // ── FIX D: Preview NEVER calls Leonardo, even if key exists ──
+    // ── Preview NEVER calls Leonardo, even if key exists ──
     if (!isProduction) {
-      // FIX C: Insert log as "started" first
-      let logId: string | null = null;
+      const placeholderUrl = `https://placehold.co/1024x1024/1a1a2e/ffffff?text=CONCEPT+ONLY%0A${encodeURIComponent(skuName || "SKU")}`;
+
       if (supabase) {
-        const { data: log } = await supabase.from("ai_generation_logs").insert({
+        await supabase.from("ai_generation_logs").insert({
           task_type: "mockup_preview",
           model_provider: "stub",
           model_used: "placeholder",
-          status: "started",
+          status: "success",
           collection_id: collectionId || null,
           metadata: { skuName, skuId, prompt: prompt.slice(0, 200) },
-        }).select("id").single();
-        logId = log?.id || null;
-      }
-
-      const placeholderUrl = `https://placehold.co/1024x1024/1a1a2e/ffffff?text=CONCEPT+ONLY%0A${encodeURIComponent(skuName || "SKU")}`;
-
-      // FIX C: Update to "success" after generation
-      if (supabase && logId) {
-        await supabase.from("ai_generation_logs")
-          .update({ status: "success" })
-          .eq("id", logId);
+        });
       }
 
       return new Response(
