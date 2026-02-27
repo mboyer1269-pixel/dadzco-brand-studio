@@ -190,8 +190,8 @@ serve(async (req) => {
     } catch {
       console.error("Failed to parse AI JSON:", content.slice(0, 500));
       return new Response(JSON.stringify({
-        status: "error", message: "Invalid JSON from AI", raw: content.slice(0, 800),
-      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        error: "Invalid JSON from AI", raw: content.slice(0, 800),
+      }), { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // Validate schema based on task type
@@ -201,8 +201,8 @@ serve(async (req) => {
       } catch (validationError) {
         console.error("Schema validation failed:", validationError);
         return new Response(JSON.stringify({
-          status: "error", message: "Schema validation failed", raw: JSON.stringify(parsed).slice(0, 800),
-        }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          error: "Schema validation failed", raw: JSON.stringify(parsed).slice(0, 800),
+        }), { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
     }
 
@@ -213,7 +213,7 @@ serve(async (req) => {
   } catch (e) {
     console.error("Round table error:", e);
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });

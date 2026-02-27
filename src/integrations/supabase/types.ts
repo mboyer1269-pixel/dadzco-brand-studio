@@ -129,6 +129,7 @@ export type Database = {
           palette: Json | null
           raw_summary: string | null
           rules: Json
+          rules_locked: boolean
           typography: Json | null
           updated_at: string
           user_id: string
@@ -142,6 +143,7 @@ export type Database = {
           palette?: Json | null
           raw_summary?: string | null
           rules?: Json
+          rules_locked?: boolean
           typography?: Json | null
           updated_at?: string
           user_id: string
@@ -155,6 +157,7 @@ export type Database = {
           palette?: Json | null
           raw_summary?: string | null
           rules?: Json
+          rules_locked?: boolean
           typography?: Json | null
           updated_at?: string
           user_id?: string
@@ -165,6 +168,50 @@ export type Database = {
             columns: ["brand_file_id"]
             isOneToOne: false
             referencedRelation: "brand_files"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      collection_events: {
+        Row: {
+          collection_id: string
+          created_at: string
+          event_type: string
+          forced: boolean | null
+          from_status: string | null
+          gate_results: Json | null
+          id: string
+          to_status: string | null
+          user_id: string
+        }
+        Insert: {
+          collection_id: string
+          created_at?: string
+          event_type: string
+          forced?: boolean | null
+          from_status?: string | null
+          gate_results?: Json | null
+          id?: string
+          to_status?: string | null
+          user_id: string
+        }
+        Update: {
+          collection_id?: string
+          created_at?: string
+          event_type?: string
+          forced?: boolean | null
+          from_status?: string | null
+          gate_results?: Json | null
+          id?: string
+          to_status?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "collection_events_collection_id_fkey"
+            columns: ["collection_id"]
+            isOneToOne: false
+            referencedRelation: "collections"
             referencedColumns: ["id"]
           },
         ]
@@ -458,6 +505,91 @@ export type Database = {
         }
         Relationships: []
       }
+      export_pack_items: {
+        Row: {
+          cost_cad: number | null
+          created_at: string
+          export_pack_id: string
+          id: string
+          margin: number | null
+          mockup_url: string | null
+          printfile_placeholders: Json | null
+          product_type: string | null
+          retail_price_cad: number | null
+          sku_name: string
+        }
+        Insert: {
+          cost_cad?: number | null
+          created_at?: string
+          export_pack_id: string
+          id?: string
+          margin?: number | null
+          mockup_url?: string | null
+          printfile_placeholders?: Json | null
+          product_type?: string | null
+          retail_price_cad?: number | null
+          sku_name: string
+        }
+        Update: {
+          cost_cad?: number | null
+          created_at?: string
+          export_pack_id?: string
+          id?: string
+          margin?: number | null
+          mockup_url?: string | null
+          printfile_placeholders?: Json | null
+          product_type?: string | null
+          retail_price_cad?: number | null
+          sku_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "export_pack_items_export_pack_id_fkey"
+            columns: ["export_pack_id"]
+            isOneToOne: false
+            referencedRelation: "export_packs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      export_packs: {
+        Row: {
+          collection_id: string
+          created_at: string
+          created_by: string
+          folder_path: string
+          id: string
+          manifest: Json
+          status: string
+        }
+        Insert: {
+          collection_id: string
+          created_at?: string
+          created_by: string
+          folder_path: string
+          id?: string
+          manifest?: Json
+          status?: string
+        }
+        Update: {
+          collection_id?: string
+          created_at?: string
+          created_by?: string
+          folder_path?: string
+          id?: string
+          manifest?: Json
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "export_packs_collection_id_fkey"
+            columns: ["collection_id"]
+            isOneToOne: false
+            referencedRelation: "collections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       exports: {
         Row: {
           created_at: string
@@ -534,6 +666,59 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "planner_tasks_collection_id_fkey"
+            columns: ["collection_id"]
+            isOneToOne: false
+            referencedRelation: "collections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      production_jobs: {
+        Row: {
+          collection_id: string | null
+          completed_at: string | null
+          cost_estimate: number | null
+          created_at: string
+          error_message: string | null
+          id: string
+          image_url: string | null
+          model_id: string | null
+          provider: string
+          sku_id: string | null
+          started_at: string | null
+          status: string
+        }
+        Insert: {
+          collection_id?: string | null
+          completed_at?: string | null
+          cost_estimate?: number | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          image_url?: string | null
+          model_id?: string | null
+          provider?: string
+          sku_id?: string | null
+          started_at?: string | null
+          status?: string
+        }
+        Update: {
+          collection_id?: string | null
+          completed_at?: string | null
+          cost_estimate?: number | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          image_url?: string | null
+          model_id?: string | null
+          provider?: string
+          sku_id?: string | null
+          started_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "production_jobs_collection_id_fkey"
             columns: ["collection_id"]
             isOneToOne: false
             referencedRelation: "collections"

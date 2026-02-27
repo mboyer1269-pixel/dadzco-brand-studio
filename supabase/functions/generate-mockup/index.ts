@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,13 +12,50 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  try {
-    const { prompt, skuName } = await req.json();
-    if (!prompt) throw new Error("Missing prompt");
+  const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+  const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-    console.log(`Mockup request for: ${skuName || "unknown"}`);
+  try {
+    const { prompt, skuName, production, collectionId, skuId } = await req.json();
+    if (!prompt) {
+      return new Response(JSON.stringify({ error: "Missing prompt" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const isProduction = production === true;
+    console.log(`Mockup request for: ${skuName || "unknown"}, production: ${isProduction}`);
 
     const LEONARDO_API_KEY = Deno.env.get("LEONARDO_API_KEY");
+
+    // Production mode REQUIRES Leonardo API key
+    if (isProduction && !LEONARDO_API_KEY) {
+      return new Response(
+        JSON.stringify({ error: "Leonardo API key not configured. Production generation unavailable." }),
+        { status: 501, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Log production job if DB available
+    let jobId: string | null = null;
+    let supabase: any = null;
+    if (SUPABASE_URL && SERVICE_ROLE_KEY) {
+      supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+      const { data: job } = await supabase
+        .from("production_jobs")
+        .insert({
+          collection_id: collectionId || null,
+          sku_id: skuId || skuName || null,
+          provider: LEONARDO_API_KEY ? "leonardo" : "stub",
+          model_id: "aa77f04e-3eec-4034-9c07-d0f619684628",
+          status: "started",
+          started_at: new Date().toISOString(),
+        })
+        .select("id")
+        .single();
+      jobId = job?.id || null;
+    }
 
     // If Leonardo key is configured, use real generation
     if (LEONARDO_API_KEY) {
@@ -47,12 +85,33 @@ serve(async (req) => {
       if (!createRes.ok) {
         const errText = await createRes.text();
         console.error("Leonardo create error:", createRes.status, errText);
-        throw new Error(`Leonardo API error: ${createRes.status}`);
+
+        // Update job as failed
+        if (supabase && jobId) {
+          await supabase
+            .from("production_jobs")
+            .update({ status: "failed", error_message: errText, completed_at: new Date().toISOString() })
+            .eq("id", jobId);
+        }
+
+        return new Response(
+          JSON.stringify({ error: `Leonardo API error: ${createRes.status}`, details: errText }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
 
       const createData = await createRes.json();
       const generationId = createData.sdGenerationJob?.generationId;
-      if (!generationId) throw new Error("Failed to start Leonardo generation");
+      if (!generationId) {
+        const msg = "Failed to start Leonardo generation";
+        if (supabase && jobId) {
+          await supabase.from("production_jobs").update({ status: "failed", error_message: msg, completed_at: new Date().toISOString() }).eq("id", jobId);
+        }
+        return new Response(JSON.stringify({ error: msg }), {
+          status: 502,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
 
       console.log("Generation started:", generationId);
 
@@ -74,22 +133,55 @@ serve(async (req) => {
           if (images?.length > 0) imageUrl = images[0].url;
           break;
         } else if (status === "FAILED") {
-          throw new Error("Leonardo generation failed");
+          const msg = "Leonardo generation failed";
+          if (supabase && jobId) {
+            await supabase.from("production_jobs").update({ status: "failed", error_message: msg, completed_at: new Date().toISOString() }).eq("id", jobId);
+          }
+          return new Response(JSON.stringify({ error: msg }), {
+            status: 502,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
         }
         console.log(`Poll ${i + 1}/${maxAttempts}, status: ${status}`);
       }
 
-      if (!imageUrl) throw new Error("Generation timed out after 90s");
+      if (!imageUrl) {
+        const msg = "Generation timed out after 90s";
+        if (supabase && jobId) {
+          await supabase.from("production_jobs").update({ status: "timeout", error_message: msg, completed_at: new Date().toISOString() }).eq("id", jobId);
+        }
+        return new Response(JSON.stringify({ error: msg }), {
+          status: 504,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Success
+      if (supabase && jobId) {
+        await supabase.from("production_jobs").update({
+          status: "completed",
+          image_url: imageUrl,
+          completed_at: new Date().toISOString(),
+        }).eq("id", jobId);
+      }
 
       return new Response(
-        JSON.stringify({ imageUrl, generationId, watermark: "CONCEPT ONLY" }),
+        JSON.stringify({ imageUrl, generationId, watermark: isProduction ? null : "CONCEPT ONLY" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Stub mode: return placeholder with watermark
+    // Stub mode: return placeholder with watermark (only for non-production)
     console.log("No LEONARDO_API_KEY — returning stub placeholder");
     const placeholderUrl = `https://placehold.co/1024x1024/1a1a2e/ffffff?text=CONCEPT+ONLY%0A${encodeURIComponent(skuName || "SKU")}`;
+
+    if (supabase && jobId) {
+      await supabase.from("production_jobs").update({
+        status: "completed",
+        image_url: placeholderUrl,
+        completed_at: new Date().toISOString(),
+      }).eq("id", jobId);
+    }
 
     return new Response(
       JSON.stringify({ imageUrl: placeholderUrl, generationId: "stub", watermark: "CONCEPT ONLY" }),
@@ -99,7 +191,7 @@ serve(async (req) => {
     console.error("Mockup generation error:", e);
     return new Response(
       JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
