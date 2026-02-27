@@ -8,11 +8,7 @@ const corsHeaders = {
 };
 
 function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 60);
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
 }
 
 serve(async (req) => {
@@ -24,12 +20,10 @@ serve(async (req) => {
   const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
   try {
-    // Auth
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -39,8 +33,7 @@ serve(async (req) => {
     const { data: userData, error: authErr } = await anonClient.auth.getUser();
     if (authErr || !userData.user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     const userId = userData.user.id;
@@ -49,12 +42,11 @@ serve(async (req) => {
     const { collectionId } = await req.json();
     if (!collectionId) {
       return new Response(JSON.stringify({ error: "Missing collectionId" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // FIX 5: Fetch collection + items + designs ordered deterministically
+    // FIX B: fetch designs as single object via design_id FK (1:1)
     const { data: collection, error: fetchErr } = await supabase
       .from("collections")
       .select("*, collection_items(*, designs(*))")
@@ -63,61 +55,51 @@ serve(async (req) => {
 
     if (fetchErr || !collection) {
       return new Response(JSON.stringify({ error: "Collection not found" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Gate: must be approved_for_production or later
-    const validStatuses = ["approved_for_production", "in_production", "ready_for_export"];
-    if (!validStatuses.includes(collection.lifecycle_status)) {
-      return new Response(
-        JSON.stringify({
-          error: `Collection must be approved first. Current status: ${collection.lifecycle_status}`,
-        }),
-        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    // FIX A: Ownership enforcement
+    if (collection.user_id !== userId) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    // FIX 1: Check for existing pack to determine version
+    const validStatuses = ["approved_for_production", "in_production", "ready_for_export"];
+    if (!validStatuses.includes(collection.lifecycle_status)) {
+      return new Response(JSON.stringify({
+        error: `Collection must be approved first. Current status: ${collection.lifecycle_status}`,
+      }), { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     const { data: existingPacks } = await supabase
-      .from("export_packs")
-      .select("version")
+      .from("export_packs").select("version")
       .eq("collection_id", collectionId)
-      .order("version", { ascending: false })
-      .limit(1);
+      .order("version", { ascending: false }).limit(1);
     const nextVersion = (existingPacks?.[0]?.version ?? 0) + 1;
 
     const collectionSlug = slugify(collection.name);
 
-    // FIX 1: Create export_packs row FIRST to get stable pack.id
     const { data: pack, error: packErr } = await supabase
       .from("export_packs")
       .insert({
-        collection_id: collectionId,
-        manifest: {}, // placeholder, updated below
-        folder_path: "", // placeholder, updated below
-        status: "created",
-        created_by: userId,
-        version: nextVersion,
+        collection_id: collectionId, manifest: {}, folder_path: "",
+        status: "created", created_by: userId, version: nextVersion,
       })
-      .select()
-      .single();
+      .select().single();
 
     if (packErr || !pack) {
       return new Response(JSON.stringify({ error: `Failed to create export pack: ${packErr?.message}` }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // FIX 1: Deterministic folder_path using pack.id (no timestamps)
     const folderPath = `/EXPORTS/${collectionSlug}/${pack.id}`;
-
-    // Build manifest
     const items = collection.collection_items || [];
+
     const skuManifest = items.map((item: any, idx: number) => {
-      // FIX 5: designs may be array — pick first deterministically (by created_at desc)
+      // FIX B: designs is a single object via design_id FK
       let design = item.designs;
       if (Array.isArray(design)) {
         design = design.sort((a: any, b: any) =>
@@ -130,9 +112,7 @@ serve(async (req) => {
         skuId: item.id,
         skuName: item.sku || design?.title || `SKU-${idx + 1}`,
         productType: design?.product_type || "unknown",
-        retailPriceCAD: item.retail_price,
-        costCAD: item.cost,
-        margin: item.margin,
+        retailPriceCAD: item.retail_price, costCAD: item.cost, margin: item.margin,
         selectedMockupUrl: design?.image_url || null,
         printfilePlaceholders: [
           `${folderPath}/PRINTFILES/FRONT/${skuSlug}-front.png`,
@@ -142,15 +122,11 @@ serve(async (req) => {
     });
 
     const manifest = {
-      collectionId: collection.id,
-      collectionName: collection.name,
-      season: collection.season,
-      status: collection.lifecycle_status,
-      createdAt: new Date().toISOString(),
-      version: nextVersion,
+      collectionId: collection.id, collectionName: collection.name,
+      season: collection.season, status: collection.lifecycle_status,
+      createdAt: new Date().toISOString(), version: nextVersion,
       folderStructure: {
-        root: folderPath,
-        mockupsHQ: `${folderPath}/MOCKUPS/HQ/`,
+        root: folderPath, mockupsHQ: `${folderPath}/MOCKUPS/HQ/`,
         printfilesFront: `${folderPath}/PRINTFILES/FRONT/`,
         printfilesBack: `${folderPath}/PRINTFILES/BACK/`,
         manifestJson: `${folderPath}/manifest.json`,
@@ -159,61 +135,35 @@ serve(async (req) => {
       skus: skuManifest,
     };
 
-    // Update pack with real manifest and folder_path
-    const { error: updatePackErr } = await supabase
-      .from("export_packs")
-      .update({ manifest, folder_path: folderPath })
-      .eq("id", pack.id);
+    await supabase.from("export_packs").update({ manifest, folder_path: folderPath }).eq("id", pack.id);
 
-    if (updatePackErr) {
-      console.error("Failed to update pack manifest:", updatePackErr);
-    }
-
-    // Save export_pack_items
     const packItems = skuManifest.map((sku: any) => ({
-      export_pack_id: pack.id,
-      sku_name: sku.skuName,
-      product_type: sku.productType,
-      retail_price_cad: sku.retailPriceCAD,
-      cost_cad: sku.costCAD,
-      margin: sku.margin,
-      mockup_url: sku.selectedMockupUrl,
-      printfile_placeholders: sku.printfilePlaceholders,
+      export_pack_id: pack.id, sku_name: sku.skuName, product_type: sku.productType,
+      retail_price_cad: sku.retailPriceCAD, cost_cad: sku.costCAD, margin: sku.margin,
+      mockup_url: sku.selectedMockupUrl, printfile_placeholders: sku.printfilePlaceholders,
     }));
 
     if (packItems.length > 0) {
-      const { error: itemsErr } = await supabase.from("export_pack_items").insert(packItems);
-      if (itemsErr) {
-        console.error("Failed to insert pack items:", itemsErr);
-      }
+      await supabase.from("export_pack_items").insert(packItems);
     }
 
-    // Update collection status to ready_for_export
-    await supabase
-      .from("collections")
+    await supabase.from("collections")
       .update({ lifecycle_status: "ready_for_export", status: "ready_for_export" })
       .eq("id", collectionId);
 
-    // Log event
     await supabase.from("collection_events").insert({
-      collection_id: collectionId,
-      event_type: "export_pack_created",
-      from_status: collection.lifecycle_status,
-      to_status: "ready_for_export",
-      user_id: userId,
+      collection_id: collectionId, event_type: "export_pack_created",
+      from_status: collection.lifecycle_status, to_status: "ready_for_export", user_id: userId,
     });
 
-    console.log(`[create-export-pack] ${collectionId}: pack ${pack.id} v${nextVersion} created`);
-
-    return new Response(
-      JSON.stringify({ exportPackId: pack.id, version: nextVersion, manifest }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    console.log(`[create-export-pack] ${collectionId}: pack ${pack.id} v${nextVersion}`);
+    return new Response(JSON.stringify({ exportPackId: pack.id, version: nextVersion, manifest }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   } catch (e) {
     console.error("[create-export-pack] Error:", e);
-    return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });

@@ -23,12 +23,10 @@ serve(async (req) => {
   const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
   try {
-    // Auth check
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -38,8 +36,7 @@ serve(async (req) => {
     const { data: userData, error: authErr } = await anonClient.auth.getUser();
     if (authErr || !userData.user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     const userId = userData.user.id;
@@ -48,12 +45,10 @@ serve(async (req) => {
     const { collectionId } = await req.json();
     if (!collectionId) {
       return new Response(JSON.stringify({ error: "Missing collectionId" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Fetch collection with items
     const { data: collection, error: fetchErr } = await supabase
       .from("collections")
       .select("*, collection_items(*)")
@@ -62,12 +57,17 @@ serve(async (req) => {
 
     if (fetchErr || !collection) {
       return new Response(JSON.stringify({ error: "Collection not found" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Fetch latest score
+    // FIX A: Ownership enforcement
+    if (collection.user_id !== userId) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { data: scores } = await supabase
       .from("collection_scores")
       .select("*")
@@ -76,7 +76,6 @@ serve(async (req) => {
       .limit(1);
     const latestScore = scores?.[0];
 
-    // FIX 2: Fetch brand_rules with unique user_id (single row)
     const { data: brandRule } = await supabase
       .from("brand_rules")
       .select("rules_locked")
@@ -86,16 +85,13 @@ serve(async (req) => {
       .single();
     const rulesLocked = brandRule?.rules_locked === true;
 
-    // Run gate checks
     const failures: GateFailure[] = [];
     const items = collection.collection_items || [];
 
-    // Gate 1: at least 1 item
     if (items.length === 0) {
       failures.push({ gate: "has_items", message: "Collection must have at least 1 SKU" });
     }
 
-    // FIX 3: Gate 2 — SKU completeness (all items must have retail_price, cost, margin)
     const incompleteSkus = items.filter(
       (i: any) => i.retail_price == null || i.cost == null || i.margin == null
     );
@@ -108,7 +104,6 @@ serve(async (req) => {
       });
     }
 
-    // FIX 4: Gate 3 — avg margin over ALL items (completeness enforced above)
     const avgMargin = items.length > 0
       ? items.reduce((sum: number, i: any) => sum + Number(i.margin || 0), 0) / items.length
       : 0;
@@ -116,54 +111,31 @@ serve(async (req) => {
       failures.push({
         gate: "margin_minimum",
         message: `Marge moyenne insuffisante: ${avgMargin.toFixed(1)}% (min 55%)`,
-        value: avgMargin,
-        threshold: 55,
+        value: avgMargin, threshold: 55,
       });
     }
 
-    // Gate 4: ADN alignment >= 80
     const adnScore = latestScore?.adn_alignment ?? 0;
     if (adnScore < 80) {
-      failures.push({
-        gate: "adn_alignment",
-        message: `ADN alignment insuffisant: ${adnScore}/100 (min 80)`,
-        value: adnScore,
-        threshold: 80,
-      });
+      failures.push({ gate: "adn_alignment", message: `ADN alignment insuffisant: ${adnScore}/100 (min 80)`, value: adnScore, threshold: 80 });
     }
 
-    // Gate 5: final_score >= 80
     const finalScore = latestScore?.final_score ?? 0;
     if (finalScore < 80) {
-      failures.push({
-        gate: "final_score",
-        message: `Score final insuffisant: ${finalScore}/100 (min 80)`,
-        value: finalScore,
-        threshold: 80,
-      });
+      failures.push({ gate: "final_score", message: `Score final insuffisant: ${finalScore}/100 (min 80)`, value: finalScore, threshold: 80 });
     }
 
-    // Gate 6: brand_rules_locked
     if (!rulesLocked) {
-      failures.push({
-        gate: "brand_rules_locked",
-        message: "Les règles brand doivent être verrouillées dans le Brand Book Hub",
-      });
+      failures.push({ gate: "brand_rules_locked", message: "Les règles brand doivent être verrouillées dans le Brand Book Hub" });
     }
 
-    // If any gate fails → 422
     if (failures.length > 0) {
       return new Response(JSON.stringify({ approved: false, failures }), {
-        status: 422,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // All gates pass — update collection
-    const hasNegativeProfit = items.some(
-      (i: any) => Number(i.retail_price) <= Number(i.cost)
-    );
-
+    const hasNegativeProfit = items.some((i: any) => Number(i.retail_price) <= Number(i.cost));
     const updateData: Record<string, unknown> = {
       lifecycle_status: "approved_for_production",
       status: "approved_for_production",
@@ -173,44 +145,28 @@ serve(async (req) => {
       updateData.financial_gate_passed = true;
     }
 
-    const { error: updateErr } = await supabase
-      .from("collections")
-      .update(updateData)
-      .eq("id", collectionId);
-
+    const { error: updateErr } = await supabase.from("collections").update(updateData).eq("id", collectionId);
     if (updateErr) {
       return new Response(JSON.stringify({ error: `Update failed: ${updateErr.message}` }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Log event — gate_results null on full pass (not empty array)
     await supabase.from("collection_events").insert({
-      collection_id: collectionId,
-      event_type: "approve_for_hq",
-      from_status: collection.lifecycle_status,
-      to_status: "approved_for_production",
-      gate_results: null,
-      forced: false,
-      user_id: userId,
+      collection_id: collectionId, event_type: "approve_for_hq",
+      from_status: collection.lifecycle_status, to_status: "approved_for_production",
+      gate_results: null, forced: false, user_id: userId,
     });
 
     console.log(`[approve-hq] ${collectionId}: approved`);
-
-    return new Response(
-      JSON.stringify({
-        approved: true,
-        newStatus: "approved_for_production",
-        financialGatePassed: updateData.financial_gate_passed ?? false,
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({
+      approved: true, newStatus: "approved_for_production",
+      financialGatePassed: updateData.financial_gate_passed ?? false,
+    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
     console.error("[approve-hq] Error:", e);
-    return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });
