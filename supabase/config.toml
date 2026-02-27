@@ -20,3 +20,12 @@ verify_jwt = false
 
 [functions.save-collection]
 verify_jwt = false
+
+[functions.ai-gateway]
+verify_jwt = false
+
+[functions.score-collection]
+verify_jwt = false
+
+[functions.lifecycle-gate]
+verify_jwt = false

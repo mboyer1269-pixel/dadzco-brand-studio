@@ -14,6 +14,81 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_generation_logs: {
+        Row: {
+          collection_id: string | null
+          created_at: string
+          design_id: string | null
+          duration_ms: number | null
+          error_message: string | null
+          estimated_cost: number | null
+          fallback_from: string | null
+          fallback_used: boolean | null
+          id: string
+          input_tokens: number | null
+          metadata: Json | null
+          model_provider: string
+          model_used: string
+          output_tokens: number | null
+          status: string
+          task_type: string
+          user_id: string | null
+        }
+        Insert: {
+          collection_id?: string | null
+          created_at?: string
+          design_id?: string | null
+          duration_ms?: number | null
+          error_message?: string | null
+          estimated_cost?: number | null
+          fallback_from?: string | null
+          fallback_used?: boolean | null
+          id?: string
+          input_tokens?: number | null
+          metadata?: Json | null
+          model_provider: string
+          model_used: string
+          output_tokens?: number | null
+          status?: string
+          task_type: string
+          user_id?: string | null
+        }
+        Update: {
+          collection_id?: string | null
+          created_at?: string
+          design_id?: string | null
+          duration_ms?: number | null
+          error_message?: string | null
+          estimated_cost?: number | null
+          fallback_from?: string | null
+          fallback_used?: boolean | null
+          id?: string
+          input_tokens?: number | null
+          metadata?: Json | null
+          model_provider?: string
+          model_used?: string
+          output_tokens?: number | null
+          status?: string
+          task_type?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_generation_logs_collection_id_fkey"
+            columns: ["collection_id"]
+            isOneToOne: false
+            referencedRelation: "collections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_generation_logs_design_id_fkey"
+            columns: ["design_id"]
+            isOneToOne: false
+            referencedRelation: "designs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       brand_files: {
         Row: {
           created_at: string
@@ -148,35 +223,106 @@ export type Database = {
           },
         ]
       }
+      collection_scores: {
+        Row: {
+          adn_alignment: number
+          anti_kitsch_compliance: number
+          collection_id: string
+          created_at: string
+          final_score: number
+          id: string
+          margin_strength: number
+          market_differentiation: number
+          pod_feasibility: number
+          scored_at: string
+          scored_by: string | null
+          viral_potential: number
+        }
+        Insert: {
+          adn_alignment?: number
+          anti_kitsch_compliance?: number
+          collection_id: string
+          created_at?: string
+          final_score?: number
+          id?: string
+          margin_strength?: number
+          market_differentiation?: number
+          pod_feasibility?: number
+          scored_at?: string
+          scored_by?: string | null
+          viral_potential?: number
+        }
+        Update: {
+          adn_alignment?: number
+          anti_kitsch_compliance?: number
+          collection_id?: string
+          created_at?: string
+          final_score?: number
+          id?: string
+          margin_strength?: number
+          market_differentiation?: number
+          pod_feasibility?: number
+          scored_at?: string
+          scored_by?: string | null
+          viral_potential?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "collection_scores_collection_id_fkey"
+            columns: ["collection_id"]
+            isOneToOne: false
+            referencedRelation: "collections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       collections: {
         Row: {
+          adn_score: number | null
           created_at: string
           description: string | null
+          final_score: number | null
+          financial_gate_passed: boolean | null
           id: string
+          lifecycle_status: string
+          margin_validated: boolean | null
           metadata: Json | null
           name: string
+          risk_score: number | null
           season: string | null
           status: string
           updated_at: string
           user_id: string
         }
         Insert: {
+          adn_score?: number | null
           created_at?: string
           description?: string | null
+          final_score?: number | null
+          financial_gate_passed?: boolean | null
           id?: string
+          lifecycle_status?: string
+          margin_validated?: boolean | null
           metadata?: Json | null
           name: string
+          risk_score?: number | null
           season?: string | null
           status?: string
           updated_at?: string
           user_id: string
         }
         Update: {
+          adn_score?: number | null
           created_at?: string
           description?: string | null
+          final_score?: number | null
+          financial_gate_passed?: boolean | null
           id?: string
+          lifecycle_status?: string
+          margin_validated?: boolean | null
           metadata?: Json | null
           name?: string
+          risk_score?: number | null
           season?: string | null
           status?: string
           updated_at?: string
@@ -554,6 +700,14 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "user"
+      collection_lifecycle_status:
+        | "idea"
+        | "strategy_review"
+        | "mockup_stage"
+        | "approved_for_production"
+        | "in_production"
+        | "ready_for_export"
+        | "exported"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -682,6 +836,15 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "user"],
+      collection_lifecycle_status: [
+        "idea",
+        "strategy_review",
+        "mockup_stage",
+        "approved_for_production",
+        "in_production",
+        "ready_for_export",
+        "exported",
+      ],
     },
   },
 } as const
