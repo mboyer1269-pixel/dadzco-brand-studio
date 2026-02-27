@@ -84,7 +84,7 @@ interface BrandRules {
   raw_summary: string | null;
 }
 
-const ACCEPTED_TYPES = ["application/pdf", "image/svg+xml", "image/png", "image/jpeg", "image/webp"];
+const ACCEPTED_TYPES = ["application/pdf", "image/svg+xml", "image/png", "image/jpeg", "image/webp", "application/json"];
 const MAX_SIZE = 20 * 1024 * 1024;
 
 function formatFileSize(bytes: number): string {
@@ -96,7 +96,10 @@ function formatFileSize(bytes: number): string {
 function getFileType(name: string): string {
   const ext = name.split(".").pop()?.toLowerCase() || "";
   if (ext === "pdf") return "pdf";
-  return "logo";
+  if (ext === "json") return "palette";
+  if (ext === "svg") return "logo";
+  if (["png", "jpg", "jpeg", "webp"].includes(ext)) return "logo";
+  return "badge";
 }
 
 export default function BrandBook() {
@@ -299,13 +302,13 @@ export default function BrandBook() {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file) uploadFile(file);
+    const droppedFiles = Array.from(e.dataTransfer.files);
+    droppedFiles.forEach((file) => uploadFile(file));
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) uploadFile(file);
+    const selectedFiles = Array.from(e.target.files || []);
+    selectedFiles.forEach((file) => uploadFile(file));
     if (inputRef.current) inputRef.current.value = "";
   };
 
@@ -347,13 +350,14 @@ export default function BrandBook() {
                   <Upload className="h-4 w-4 text-muted-foreground" />
                   Upload Zone
                 </CardTitle>
-                <CardDescription className="text-xs">PDF, SVG, PNG — max 20 MB · Auto-extraction IA</CardDescription>
+                <CardDescription className="text-xs">PDF, SVG, PNG, JSON palette, badges — max 20 MB · Multi-upload</CardDescription>
               </CardHeader>
               <CardContent>
                 <input
                   ref={inputRef}
                   type="file"
-                  accept=".pdf,.svg,.png,.jpg,.jpeg,.webp"
+                  accept=".pdf,.svg,.png,.jpg,.jpeg,.webp,.json"
+                  multiple
                   className="hidden"
                   onChange={handleInputChange}
                 />

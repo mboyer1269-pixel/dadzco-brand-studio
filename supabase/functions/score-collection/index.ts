@@ -90,6 +90,19 @@ serve(async (req) => {
       collection = data;
     }
 
+    // Fetch brand_rules for the authenticated user to inject as constraints
+    const { data: brandRulesData } = await supabase
+      .from("brand_rules")
+      .select("palette, typography, rules, forbidden_keywords")
+      .order("updated_at", { ascending: false })
+      .limit(1);
+    const brandConstraints = brandRulesData?.[0] || null;
+
+    let brandContext = "";
+    if (brandConstraints) {
+      brandContext = `\n\nCONTRAINTES BRAND (source: Brand Book Hub verrouillé):\n- Palette: ${JSON.stringify(brandConstraints.palette)}\n- Typographie: ${JSON.stringify(brandConstraints.typography)}\n- Règles: ${JSON.stringify(brandConstraints.rules)}\n- Mots interdits: ${JSON.stringify(brandConstraints.forbidden_keywords)}\n\nUtilise ces contraintes pour évaluer adn_alignment et anti_kitsch_compliance.`;
+    }
+
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -99,7 +112,7 @@ serve(async (req) => {
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
         messages: [
-          { role: "system", content: SCORING_PROMPT },
+          { role: "system", content: SCORING_PROMPT + brandContext },
           { role: "user", content: `Collection à scorer:\n${JSON.stringify(collection, null, 2)}` },
         ],
         temperature: 0.3,
