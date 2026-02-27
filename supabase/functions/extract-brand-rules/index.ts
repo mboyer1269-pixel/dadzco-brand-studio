@@ -79,7 +79,8 @@ Be thorough and specific. Extract real data from the document, not generic guide
 
     // Both PDFs and images use image_url with data URI — the AI gateway handles both
     const aiPayload: any = {
-      model: "google/gemini-2.5-pro",
+      model: "google/gemini-2.5-flash",
+      max_tokens: 800,
       messages: [
         { role: "system", content: systemPrompt },
         {
