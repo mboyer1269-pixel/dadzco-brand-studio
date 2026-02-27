@@ -5,19 +5,26 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { ThemeProvider } from "@/lib/theme";
-import Index from "./pages/Index";
+
+// Primary pages
+import HQ from "./pages/HQ";
 import Login from "./pages/Login";
-import Generate from "./pages/Generate";
+import BrandBook from "./pages/BrandBook";
+import Create from "./pages/Create";
 import Collections from "./pages/Collections";
+import Launch from "./pages/Launch";
+import SettingsPage from "./pages/SettingsPage";
+import NotFound from "./pages/NotFound";
+
+// Legacy pages (hidden from sidebar, still accessible)
+import Index from "./pages/Index";
+import Generate from "./pages/Generate";
 import CollectionWizard from "./pages/CollectionWizard";
 import Library from "./pages/Library";
 import Storytelling from "./pages/Storytelling";
 import Exports from "./pages/Exports";
-import BrandBook from "./pages/BrandBook";
 import CalendarPlanner from "./pages/CalendarPlanner";
-import SettingsPage from "./pages/SettingsPage";
 import RoundTable from "./pages/RoundTable";
-import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
@@ -40,16 +47,13 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
-
   return <>{children}</>;
 }
 
 function AuthRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
-
   if (isLoading) return null;
   if (isAuthenticated) return <Navigate to="/" replace />;
-
   return <>{children}</>;
 }
 
@@ -63,17 +67,26 @@ const App = () => (
           <BrowserRouter>
             <Routes>
               <Route path="/login" element={<AuthRoute><Login /></AuthRoute>} />
-              <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
-              <Route path="/generate" element={<ProtectedRoute><Generate /></ProtectedRoute>} />
+
+              {/* Primary pages */}
+              <Route path="/" element={<ProtectedRoute><HQ /></ProtectedRoute>} />
+              <Route path="/brand" element={<ProtectedRoute><BrandBook /></ProtectedRoute>} />
+              <Route path="/create" element={<ProtectedRoute><Create /></ProtectedRoute>} />
               <Route path="/collections" element={<ProtectedRoute><Collections /></ProtectedRoute>} />
               <Route path="/collections/new" element={<ProtectedRoute><CollectionWizard /></ProtectedRoute>} />
+              <Route path="/launch" element={<ProtectedRoute><Launch /></ProtectedRoute>} />
+              <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+
+              {/* Legacy routes (hidden from sidebar) */}
+              <Route path="/dashboard-legacy" element={<ProtectedRoute><Index /></ProtectedRoute>} />
+              <Route path="/generate" element={<ProtectedRoute><Generate /></ProtectedRoute>} />
               <Route path="/brand-book" element={<ProtectedRoute><BrandBook /></ProtectedRoute>} />
               <Route path="/calendar" element={<ProtectedRoute><CalendarPlanner /></ProtectedRoute>} />
               <Route path="/library" element={<ProtectedRoute><Library /></ProtectedRoute>} />
               <Route path="/storytelling" element={<ProtectedRoute><Storytelling /></ProtectedRoute>} />
               <Route path="/exports" element={<ProtectedRoute><Exports /></ProtectedRoute>} />
-              <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
               <Route path="/round-table" element={<ProtectedRoute><RoundTable /></ProtectedRoute>} />
+
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
