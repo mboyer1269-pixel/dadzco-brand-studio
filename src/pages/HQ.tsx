@@ -26,31 +26,19 @@ export default function HQ() {
   const handleAskCHAP = async () => {
     setIsLoadingChap(true);
     try {
-      const { data, error } = await supabase.functions.invoke("ai-gateway", {
+      const { data, error } = await supabase.functions.invoke("round-table", {
         body: {
-          taskType: "strategy",
-          messages: [
-            {
-              role: "system",
-              content: `You are CHAP, the DADZCO Brand Manager AI. Analyze the current state and return exactly 3 actionable moves as a JSON array. Each move has: action (string, max 15 words), reason (string, max 25 words), priority ("high"|"medium"|"low"). Return ONLY the JSON array, no wrapping.`,
-            },
-            {
-              role: "user",
-              content: "What are my top 3 moves right now to grow profitability and brand strength?",
-            },
-          ],
+          taskType: "chap",
+          customInstructions: "Return ONLY a JSON object with a single key 'moves' containing an array of exactly 3 objects. Each object: { action (string, max 15 words), reason (string, max 25 words), priority ('high'|'medium'|'low') }. No collections, no SKUs. Just 3 strategic moves for DADZCO brand growth and profitability.",
         },
       });
 
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
 
-      const text = data?.result || data?.choices?.[0]?.message?.content || "[]";
-      const cleaned = text.replace(/```json?\s*/g, "").replace(/```/g, "").trim();
-      const firstBracket = cleaned.indexOf("[");
-      const lastBracket = cleaned.lastIndexOf("]");
-      if (firstBracket === -1) throw new Error("No JSON array found");
-      const parsed = JSON.parse(cleaned.substring(firstBracket, lastBracket + 1));
-      setChapMoves(parsed.slice(0, 3));
+      // CHAP response: { moves: [...] }
+      const moves = data?.moves || [];
+      setChapMoves(moves.slice(0, 3));
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Unknown error";
       console.error("CHAP error:", e);
