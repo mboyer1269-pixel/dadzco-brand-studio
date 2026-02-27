@@ -37,12 +37,36 @@ Réponds UNIQUEMENT avec du JSON valide :
   "notes": "Brief justification (2 phrases max)"
 }`;
 
+// ─── Auth Helper ────────────────────────────────────────────────────
+async function authenticateRequest(req: Request): Promise<string> {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    throw new Error("Unauthorized");
+  }
+
+  const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+  const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: { headers: { Authorization: authHeader } },
+  });
+
+  const token = authHeader.replace("Bearer ", "");
+  const { data, error } = await supabase.auth.getClaims(token);
+  if (error || !data?.claims) {
+    throw new Error("Unauthorized");
+  }
+
+  return data.claims.sub as string;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    await authenticateRequest(req);
+
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -55,8 +79,7 @@ serve(async (req) => {
       throw new Error("Missing collectionId or collectionData");
     }
 
-    // If collectionId provided, fetch from DB
-    let collection = collectionData;
+    let collection: unknown = collectionData;
     if (collectionId && !collection) {
       const { data, error } = await supabase
         .from("collections")
@@ -67,7 +90,6 @@ serve(async (req) => {
       collection = data;
     }
 
-    // Call AI for scoring
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -93,14 +115,13 @@ serve(async (req) => {
 
     const aiData = await res.json();
     const content = aiData.choices?.[0]?.message?.content || "";
-    let scores;
+    let scores: Record<string, unknown>;
     try {
       scores = JSON.parse(content.trim());
     } catch {
       throw new Error("AI returned invalid JSON for scores");
     }
 
-    // Save scores to DB
     if (collectionId) {
       await supabase.from("collection_scores").insert({
         collection_id: collectionId,
@@ -114,7 +135,6 @@ serve(async (req) => {
         scored_by: "ai-gateway",
       });
 
-      // Update collection summary scores
       await supabase.from("collections").update({
         final_score: scores.final_score,
         adn_score: scores.adn_alignment,
@@ -126,9 +146,10 @@ serve(async (req) => {
     });
   } catch (e) {
     console.error("Scoring error:", e);
+    const isAuth = e instanceof Error && e.message === "Unauthorized";
     return new Response(
       JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: isAuth ? 401 : 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
