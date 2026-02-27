@@ -561,6 +561,7 @@ export type Database = {
           id: string
           manifest: Json
           status: string
+          version: number
         }
         Insert: {
           collection_id: string
@@ -570,6 +571,7 @@ export type Database = {
           id?: string
           manifest?: Json
           status?: string
+          version?: number
         }
         Update: {
           collection_id?: string
@@ -579,6 +581,7 @@ export type Database = {
           id?: string
           manifest?: Json
           status?: string
+          version?: number
         }
         Relationships: [
           {
