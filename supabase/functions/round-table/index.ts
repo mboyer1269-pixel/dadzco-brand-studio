@@ -6,26 +6,8 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const SYSTEM_PROMPT = `Tu es le "Round Table" de DADZCO — un collectif de 7 agents experts qui collaborent pour créer des collections complètes de vêtements premium.
-
-Les 7 agents :
-1. **Brand Strategy Specialist** — Positionnement marque, cohérence ADN "Écho & Rire"
-2. **Creative & Mythology Director** — Thèmes, mythologie, univers narratif
-3. **Artistic Designer** — Direction artistique, palettes, typographies, placements graphiques
-4. **POD Specialist** — Faisabilité technique print-on-demand, placements (large patch bas hoodie/crewneck, petite version tees), formats fichiers
-5. **Storytelling Grok** — Mythologie "Écho & Rire", punchlines élégantes, descriptions Shopify, captions TikTok/Instagram
-6. **Growth & Conversion Strategist** — Stratégie pricing, bundles, upsells, conversion
-7. **Financial Gatekeeper** — Validation marges (cible 58.5%), buffer 12% retours, pricing réel CAD
-
-RÈGLES STRICTES :
-- Chaque collection = 7 SKUs : 4 Quiet Luxury (minimaliste, géométrique, ton-sur-ton) + 3 Funny Premium (humour élégant, typographie witty)
-- Produits : T-shirt, Crewneck, Hoodie — versions Adult + Kid matching
-- Placements : Large patch bas pour hoodie/crewneck, petite version pour tees
-- Thank you note packaging inclus par collection
-- Prix en CAD, marge réelle 58.5%, buffer 12%, perso +15 CAD
-- Bundle pricing : Adult + Kid = -10%
-- Storytelling par SKU : mythologie courte, 3 punchlines, description Shopify, caption TikTok, caption Instagram, brief image hero
-- Chaque agent signe sa contribution
+/* ── Prompt for collection generation ── */
+const COLLECTION_PROMPT = `Tu es le "Round Table" de DADZCO — un collectif de 7 agents experts.
 
 FORMAT DE SORTIE (JSON strict) :
 {
@@ -35,48 +17,93 @@ FORMAT DE SORTIE (JSON strict) :
       "theme": "Description du thème",
       "season": "Spring/Summer 2026",
       "palette": ["couleur1", "couleur2", "couleur3"],
-      "thank_you_note": "Texte du thank you note packaging",
+      "concept_score": 82,
+      "status": "concept",
+      "thank_you_note": "Texte packaging",
       "agent_notes": {
-        "brand_strategy": "Note du Brand Strategy Specialist",
-        "creative_director": "Note du Creative & Mythology Director",
-        "artistic_designer": "Note de l'Artistic Designer",
-        "pod_specialist": "Note du POD Specialist",
-        "storytelling": "Note du Storytelling Grok",
-        "growth": "Note du Growth & Conversion Strategist",
-        "financial": "Note du Financial Gatekeeper"
+        "brand_strategy": "...",
+        "creative_director": "...",
+        "artistic_designer": "...",
+        "pod_specialist": "...",
+        "storytelling": "...",
+        "growth": "...",
+        "financial": "..."
       },
       "skus": [
         {
-          "name": "Nom du SKU",
+          "name": "Nom SKU",
           "type": "quiet",
           "products": ["t-shirt", "crewneck", "hoodie"],
-          "placement": "Description du placement graphique",
-          "adult_base_cost": 18,
-          "kid_base_cost": 14,
+          "placement": "Description placement",
+          "margin_target": 58.5,
+          "mockup_brief": "Brief pour mockup",
           "adult_retail": 45,
           "kid_retail": 38,
-          "bundle_price": 75,
-          "bundle_with_perso": 90,
-          "margin_pct": 58.5,
-          "mockup_brief": "Brief détaillé pour le mock-up",
-          "story": {
-            "mythology": "Mythologie Écho & Rire (2-3 phrases)",
-            "punchlines": ["punchline 1", "punchline 2", "punchline 3"],
-            "shopify_description": "Description Shopify complète",
-            "tiktok_caption": "Caption TikTok avec hashtags",
-            "instagram_caption": "Caption Instagram avec hashtags",
-            "hero_image_brief": "Brief pour image hero"
-          }
+          "bundle_price": 75
         }
       ]
     }
   ]
 }
 
-Génère EXACTEMENT 3 collections. Chaque collection a EXACTEMENT 7 SKUs (4 quiet + 3 funny).
-Tous les prix sont en CAD. Les marges doivent être validées par le Financial Gatekeeper.
-IMPORTANT: Sois concis dans les notes d'agents (1-2 phrases max par agent). Punchlines courtes. Descriptions Shopify de 2 phrases max.
-Réponds UNIQUEMENT avec le JSON valide, sans texte avant ou après, sans blocs markdown.`;
+RÈGLES :
+- Max 6 SKUs par collection, max 3 couleurs dans palette
+- concept_score : 0-100 (évaluation qualité par le collectif)
+- status : toujours "concept" en sortie
+- Notes d'agents : 1-2 phrases max chacune
+- Punchlines courtes. Descriptions concises.
+- Réponds UNIQUEMENT avec le JSON valide.`;
+
+/* ── Prompt for CHAP (Brand Manager) ── */
+const CHAP_PROMPT = `Tu es CHAP, le Brand Manager IA de DADZCO.
+Analyse l'état actuel de la marque et retourne exactement 3 actions stratégiques.
+
+FORMAT DE SORTIE (JSON strict) :
+{
+  "moves": [
+    { "action": "...", "reason": "...", "priority": "high" },
+    { "action": "...", "reason": "...", "priority": "medium" },
+    { "action": "...", "reason": "...", "priority": "low" }
+  ]
+}
+
+- action : max 15 mots
+- reason : max 25 mots
+- priority : "high", "medium" ou "low"
+- Réponds UNIQUEMENT avec le JSON valide.`;
+
+/* ── Robust JSON extraction ── */
+function extractJSON(text: string): string {
+  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const cleaned = fenceMatch ? fenceMatch[1].trim() : text.trim();
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace === -1 || lastBrace === -1) {
+    throw new Error("No JSON object found in AI response");
+  }
+  return cleaned.substring(firstBrace, lastBrace + 1);
+}
+
+/* ── Validate collection schema ── */
+function validateCollections(data: Record<string, unknown>): Record<string, unknown> {
+  const collections = data.collections;
+  if (!Array.isArray(collections) || collections.length === 0) {
+    throw new Error("Missing or empty 'collections' array");
+  }
+  for (const col of collections) {
+    const c = col as Record<string, unknown>;
+    if (!c.name) c.name = "Untitled Collection";
+    if (!c.theme) c.theme = "";
+    if (!Array.isArray(c.palette)) c.palette = [];
+    (c.palette as string[]).splice(3); // max 3 colors
+    if (!Array.isArray(c.skus)) c.skus = [];
+    (c.skus as unknown[]).splice(6); // max 6 SKUs
+    if (typeof c.concept_score !== "number") c.concept_score = 75;
+    if (!c.status) c.status = "concept";
+    if (!c.agent_notes || typeof c.agent_notes !== "object") c.agent_notes = {};
+  }
+  return data;
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -89,26 +116,33 @@ serve(async (req) => {
 
     let customInstructions = "";
     let isPing = false;
+    let taskType = "collection"; // default
     try {
       const body = await req.json();
       customInstructions = body?.customInstructions || "";
       isPing = body?.ping === true;
+      taskType = body?.taskType || "collection";
     } catch {
       // empty body is fine
     }
 
-    // Health check — return immediately without calling AI
+    // Health check
     if (isPing) {
       return new Response(JSON.stringify({ status: "ok", gateway: "ready" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const userMessage = customInstructions
-      ? `Génère 3 collections complètes pour DADZCO. Instructions additionnelles : ${customInstructions}`
-      : "Génère 3 collections complètes pour DADZCO avec des thèmes variés et créatifs. Mélange les univers : un thème nature/organique, un thème urbain/moderne, un thème héritage/classique.";
+    // Build prompt based on task type
+    const isChap = taskType === "chap";
+    const systemPrompt = isChap ? CHAP_PROMPT : COLLECTION_PROMPT;
+    const userMessage = isChap
+      ? (customInstructions || "Quelles sont mes 3 meilleures actions stratégiques maintenant ?")
+      : customInstructions
+        ? `Génère 1 collection complète pour DADZCO. Instructions : ${customInstructions}`
+        : "Génère 1 collection complète pour DADZCO avec un thème créatif et varié.";
 
-    console.log("Calling AI gateway with gemini-2.5-pro...");
+    console.log(`Round Table task: ${taskType}`);
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -119,11 +153,11 @@ serve(async (req) => {
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
         messages: [
-          { role: "system", content: SYSTEM_PROMPT },
+          { role: "system", content: systemPrompt },
           { role: "user", content: userMessage },
         ],
         temperature: 0.7,
-        max_tokens: 12000,
+        max_tokens: isChap ? 2000 : 8000,
         response_format: { type: "json_object" },
       }),
     });
@@ -133,72 +167,53 @@ serve(async (req) => {
       console.error("AI gateway error:", response.status, errText);
       if (response.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit exceeded. Réessayez dans quelques secondes." }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      throw new Error(`AI gateway error: ${response.status} — ${errText.slice(0, 200)}`);
+      throw new Error(`AI gateway error: ${response.status}`);
     }
 
     const rawText = await response.text();
-    console.log("AI response length:", rawText.length);
-
     let data;
-    try {
-      data = JSON.parse(rawText);
-    } catch {
-      console.error("Failed to parse gateway response:", rawText.slice(0, 500));
+    try { data = JSON.parse(rawText); } catch {
+      console.error("Gateway response not JSON:", rawText.slice(0, 500));
       throw new Error("Gateway response was not valid JSON");
     }
 
     const content = data.choices?.[0]?.message?.content || "";
-    if (!content) {
-      console.error("Empty content from AI. Full response:", JSON.stringify(data).slice(0, 1000));
-      throw new Error("AI returned empty content");
-    }
-
-    console.log("AI content length:", content.length);
-
-    // Robust JSON extraction
-    function extractJSON(text: string): string {
-      // Strip markdown code fences first
-      const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-      const cleaned = fenceMatch ? fenceMatch[1].trim() : text.trim();
-      
-      const firstBrace = cleaned.indexOf("{");
-      const lastBrace = cleaned.lastIndexOf("}");
-      if (firstBrace === -1 || lastBrace === -1) {
-        throw new Error("No JSON object found in AI response");
-      }
-      return cleaned.substring(firstBrace, lastBrace + 1);
-    }
+    if (!content) throw new Error("AI returned empty content");
 
     let parsed;
     try {
       const jsonStr = extractJSON(content);
       parsed = JSON.parse(jsonStr);
-    } catch (parseErr) {
-      console.error("Failed to parse AI content as JSON:", content.slice(0, 500));
-      return new Response(JSON.stringify({ 
-        status: "error",
-        message: "Invalid JSON from AI",
-        raw: content.slice(0, 800),
-      }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    } catch {
+      console.error("Failed to parse AI JSON:", content.slice(0, 500));
+      return new Response(JSON.stringify({
+        status: "error", message: "Invalid JSON from AI", raw: content.slice(0, 800),
+      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    console.log("Success! Collections:", parsed.collections?.length || 0);
+    // Validate schema based on task type
+    if (!isChap) {
+      try {
+        parsed = validateCollections(parsed);
+      } catch (validationError) {
+        console.error("Schema validation failed:", validationError);
+        return new Response(JSON.stringify({
+          status: "error", message: "Schema validation failed", raw: JSON.stringify(parsed).slice(0, 800),
+        }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
 
+    console.log(`Success! Task: ${taskType}`);
     return new Response(JSON.stringify(parsed), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
     console.error("Round table error:", e);
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });

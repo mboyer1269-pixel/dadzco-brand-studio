@@ -54,7 +54,7 @@ const STEPS: { key: PipelineStep; label: string; icon: typeof Lightbulb; descrip
 
 export default function Create() {
   const { toast } = useToast();
-  const [expandedStep, setExpandedStep] = useState<PipelineStep>("idea");
+  const [expandedStep, setExpandedStep] = useState<PipelineStep | null>("idea");
 
   // Step A state
   const [theme, setTheme] = useState("");
@@ -79,7 +79,7 @@ export default function Create() {
   const [isRunningQA, setIsRunningQA] = useState(false);
 
   const toggleStep = (step: PipelineStep) => {
-    setExpandedStep((prev) => (prev === step ? step : step));
+    setExpandedStep((prev) => (prev === step ? null : step));
   };
 
   const canAccessStep = (step: PipelineStep): boolean => {

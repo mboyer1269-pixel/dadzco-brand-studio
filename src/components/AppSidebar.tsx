@@ -44,7 +44,7 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon" className="border-r border-border">
       <SidebarHeader className="p-4">
-        {!collapsed && (
+        {!collapsed ? (
           <div className="mb-2">
             <h2 className="font-display text-xl font-light tracking-wide text-foreground">
               DADZCO
@@ -53,8 +53,7 @@ export function AppSidebar() {
               Brand OS
             </p>
           </div>
-        )}
-        {collapsed && (
+        ) : (
           <div className="flex justify-center">
             <span className="font-display text-lg font-light text-foreground">D</span>
           </div>
@@ -75,7 +74,7 @@ export function AppSidebar() {
                       activeClassName="bg-accent/40 text-foreground font-medium"
                     >
                       <item.icon className="h-4 w-4 shrink-0" />
-                      {!collapsed && <span>{item.title}</span>}
+                      {!collapsed && item.title}
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -92,8 +91,16 @@ export function AppSidebar() {
           onClick={toggleTheme}
           className="w-full justify-start gap-3 text-muted-foreground font-body"
         >
-          {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-          {!collapsed && <span className="text-xs">{theme === "light" ? "Dark mode" : "Light mode"}</span>}
+          {theme === "light" ? (
+            <Moon className="h-4 w-4" />
+          ) : (
+            <Sun className="h-4 w-4" />
+          )}
+          {!collapsed && (
+            <span className="text-xs">
+              {theme === "light" ? "Dark mode" : "Light mode"}
+            </span>
+          )}
         </Button>
         <Button
           variant="ghost"
