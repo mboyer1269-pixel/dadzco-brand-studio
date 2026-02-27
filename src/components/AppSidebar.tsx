@@ -1,17 +1,13 @@
 import {
   LayoutDashboard,
-  Sparkles,
+  Palette,
+  Wand2,
   FolderOpen,
-  Image,
-  PenTool,
-  Download,
+  Rocket,
   Settings,
   LogOut,
   Moon,
   Sun,
-  BookOpen,
-  CalendarDays,
-  Users,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/lib/auth";
@@ -31,15 +27,11 @@ import {
 import { Button } from "@/components/ui/button";
 
 const navItems = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "Round Table", url: "/round-table", icon: Users },
-  { title: "Brand Book", url: "/brand-book", icon: BookOpen },
-  { title: "Calendar", url: "/calendar", icon: CalendarDays },
-  { title: "Generator", url: "/generate", icon: Sparkles },
+  { title: "HQ", url: "/", icon: LayoutDashboard },
+  { title: "Brand", url: "/brand", icon: Palette },
+  { title: "Create", url: "/create", icon: Wand2 },
   { title: "Collections", url: "/collections", icon: FolderOpen },
-  { title: "Library", url: "/library", icon: Image },
-  { title: "Storytelling", url: "/storytelling", icon: PenTool },
-  { title: "Exports", url: "/exports", icon: Download },
+  { title: "Launch", url: "/launch", icon: Rocket },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
 
@@ -79,8 +71,8 @@ export function AppSidebar() {
                     <NavLink
                       to={item.url}
                       end={item.url === "/"}
-                      className="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-body text-muted-foreground hover:bg-lavande/10 hover:text-foreground transition-all duration-200"
-                      activeClassName="bg-lavande/15 text-foreground font-medium"
+                      className="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-body text-muted-foreground hover:bg-accent/30 hover:text-foreground transition-all duration-200"
+                      activeClassName="bg-accent/40 text-foreground font-medium"
                     >
                       <item.icon className="h-4 w-4 shrink-0" />
                       {!collapsed && <span>{item.title}</span>}
