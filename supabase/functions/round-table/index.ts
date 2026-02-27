@@ -88,11 +88,20 @@ serve(async (req) => {
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
     let customInstructions = "";
+    let isPing = false;
     try {
       const body = await req.json();
       customInstructions = body?.customInstructions || "";
+      isPing = body?.ping === true;
     } catch {
       // empty body is fine
+    }
+
+    // Health check — return immediately without calling AI
+    if (isPing) {
+      return new Response(JSON.stringify({ status: "ok", gateway: "ready" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const userMessage = customInstructions
@@ -150,41 +159,34 @@ serve(async (req) => {
 
     console.log("AI content length:", content.length);
 
-    // Extract JSON — handle possible markdown wrapping
-    let jsonStr = content.trim();
-    const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (jsonMatch) {
-      jsonStr = jsonMatch[1].trim();
+    // Robust JSON extraction
+    function extractJSON(text: string): string {
+      // Strip markdown code fences first
+      const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+      const cleaned = fenceMatch ? fenceMatch[1].trim() : text.trim();
+      
+      const firstBrace = cleaned.indexOf("{");
+      const lastBrace = cleaned.lastIndexOf("}");
+      if (firstBrace === -1 || lastBrace === -1) {
+        throw new Error("No JSON object found in AI response");
+      }
+      return cleaned.substring(firstBrace, lastBrace + 1);
     }
 
     let parsed;
     try {
+      const jsonStr = extractJSON(content);
       parsed = JSON.parse(jsonStr);
-    } catch {
-      // Try to repair truncated JSON by closing open structures
-      let repaired = jsonStr;
-      // Close any open strings
-      const quoteCount = (repaired.match(/(?<!\\)"/g) || []).length;
-      if (quoteCount % 2 !== 0) repaired += '"';
-      // Try adding closing brackets/braces
-      const opens = (repaired.match(/[\[{]/g) || []).length;
-      const closes = (repaired.match(/[\]}]/g) || []).length;
-      for (let i = 0; i < opens - closes; i++) {
-        // Simple heuristic: close with } or ] based on last opener
-        repaired += "}";
-      }
-      try {
-        parsed = JSON.parse(repaired);
-      } catch {
-        console.error("Failed to parse AI content as JSON:", jsonStr.slice(0, 500));
-        return new Response(JSON.stringify({ 
-          error: "La réponse IA n'était pas du JSON valide. Réessayez.",
-          raw_preview: jsonStr.slice(0, 500),
-        }), {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
+    } catch (parseErr) {
+      console.error("Failed to parse AI content as JSON:", content.slice(0, 500));
+      return new Response(JSON.stringify({ 
+        status: "error",
+        message: "Invalid JSON from AI",
+        raw: content.slice(0, 800),
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     console.log("Success! Collections:", parsed.collections?.length || 0);

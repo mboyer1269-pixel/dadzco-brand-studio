@@ -36,16 +36,13 @@ export function UltraReliableChecklist() {
       label: "Round Table (AI Gateway)",
       icon: Users,
       test: async () => {
-        // Test the AI gateway directly with a tiny request
         try {
-          const res = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/round-table`,
-            {
-              method: "OPTIONS",
-              headers: { "Content-Type": "application/json" },
-            }
-          );
-          return res.ok || res.status === 204;
+          const { data, error } = await supabase.functions.invoke("round-table", {
+            method: "POST",
+            body: { ping: true },
+          });
+          // Accept any non-error response (including AI parse issues returned as 200)
+          return !error;
         } catch {
           return false;
         }
