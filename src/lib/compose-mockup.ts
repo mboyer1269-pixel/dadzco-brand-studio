@@ -24,7 +24,6 @@ interface ComposeMockupOptions {
   designImageUrl?: string | null;
 }
 
-// Print area definitions relative to 800x1000 canvas
 const PRINT_AREAS: Record<GarmentType, Record<Placement, { x: number; y: number; w: number; h: number }>> = {
   tee: {
     center: { x: 250, y: 300, w: 300, h: 300 },
@@ -44,6 +43,17 @@ const PRINT_AREAS: Record<GarmentType, Record<Placement, { x: number; y: number;
   },
 };
 
+/** Safe roundRect that works on all browsers including mobile */
+function safeRoundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
 function getGarmentForSku(skuType: "quiet" | "funny" | "hero", index: number): GarmentType {
   if (skuType === "hero") return "hoodie";
   const garments: GarmentType[] = ["tee", "crewneck", "hoodie", "cap"];
@@ -58,20 +68,19 @@ function drawGarmentSilhouette(ctx: CanvasRenderingContext2D, garment: GarmentTy
   switch (garment) {
     case "tee":
       ctx.beginPath();
-      // T-shirt silhouette
       ctx.moveTo(280, 140);
-      ctx.lineTo(200, 180); // left shoulder
-      ctx.lineTo(140, 350); // left sleeve
-      ctx.lineTo(200, 350); // sleeve cuff
-      ctx.lineTo(220, 260); // underarm
-      ctx.lineTo(220, 780); // left hem
-      ctx.lineTo(580, 780); // bottom
-      ctx.lineTo(580, 260); // right side
-      ctx.lineTo(600, 350); // right underarm
-      ctx.lineTo(660, 350); // right sleeve
-      ctx.lineTo(600, 180); // right shoulder
-      ctx.lineTo(520, 140); // right collar
-      ctx.quadraticCurveTo(400, 110, 280, 140); // collar
+      ctx.lineTo(200, 180);
+      ctx.lineTo(140, 350);
+      ctx.lineTo(200, 350);
+      ctx.lineTo(220, 260);
+      ctx.lineTo(220, 780);
+      ctx.lineTo(580, 780);
+      ctx.lineTo(580, 260);
+      ctx.lineTo(600, 350);
+      ctx.lineTo(660, 350);
+      ctx.lineTo(600, 180);
+      ctx.lineTo(520, 140);
+      ctx.quadraticCurveTo(400, 110, 280, 140);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
@@ -81,7 +90,7 @@ function drawGarmentSilhouette(ctx: CanvasRenderingContext2D, garment: GarmentTy
       ctx.beginPath();
       ctx.moveTo(290, 150);
       ctx.lineTo(180, 200);
-      ctx.lineTo(100, 400); // longer sleeve
+      ctx.lineTo(100, 400);
       ctx.lineTo(170, 410);
       ctx.lineTo(210, 280);
       ctx.lineTo(210, 800);
@@ -95,7 +104,6 @@ function drawGarmentSilhouette(ctx: CanvasRenderingContext2D, garment: GarmentTy
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
-      // Cuff lines
       ctx.strokeStyle = BRAND_PALETTE.sable;
       ctx.lineWidth = 3;
       ctx.beginPath();
@@ -130,22 +138,19 @@ function drawGarmentSilhouette(ctx: CanvasRenderingContext2D, garment: GarmentTy
       ctx.quadraticCurveTo(400, 30, 470, 40);
       ctx.quadraticCurveTo(550, 50, 500, 130);
       ctx.stroke();
-      // Kangaroo pocket
+      // Kangaroo pocket — using safeRoundRect
       ctx.strokeStyle = BRAND_PALETTE.sable;
       ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.roundRect(280, 550, 240, 120, 10);
+      safeRoundRect(ctx, 280, 550, 240, 120, 10);
       ctx.stroke();
       break;
 
     case "cap":
       ctx.beginPath();
-      // Cap dome
       ctx.ellipse(400, 400, 220, 180, 0, Math.PI, 0);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
-      // Brim
       ctx.beginPath();
       ctx.ellipse(400, 400, 260, 40, 0, 0, Math.PI);
       ctx.closePath();
@@ -182,7 +187,6 @@ function drawOverlayBadge(
   const cy = area.y + area.h / 2;
 
   if (skuType === "quiet") {
-    // Geometric echo motif - concentric circles
     const baseColor = getPaletteColor(palette, 0);
     for (let i = 3; i >= 0; i--) {
       ctx.beginPath();
@@ -193,25 +197,21 @@ function drawOverlayBadge(
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
-    // Small text
     ctx.font = "bold 14px 'Inter', sans-serif";
     ctx.fillStyle = BRAND_PALETTE.navy;
     ctx.textAlign = "center";
     ctx.fillText(skuName.split(" ").slice(0, 2).join(" "), cx, cy + area.h / 2 + 20);
   } else if (skuType === "funny") {
-    // Typographic badge
     ctx.save();
     ctx.fillStyle = BRAND_PALETTE.navy;
     ctx.globalAlpha = 0.9;
-    ctx.beginPath();
-    ctx.roundRect(area.x + 10, area.y + 10, area.w - 20, area.h - 20, 8);
+    safeRoundRect(ctx, area.x + 10, area.y + 10, area.w - 20, area.h - 20, 8);
     ctx.fill();
     ctx.globalAlpha = 1;
     ctx.fillStyle = BRAND_PALETTE.creme;
     ctx.font = "bold 16px 'Inter', sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    // Word wrap
     const words = skuName.split(" ");
     const lineHeight = 22;
     const startY = cy - ((words.length > 3 ? 2 : words.length - 1) * lineHeight) / 2;
@@ -230,7 +230,6 @@ function drawOverlayBadge(
     if (line) ctx.fillText(line, cx, startY + lineNum * lineHeight);
     ctx.restore();
   } else {
-    // Hero - premium badge with gradient-like effect
     ctx.save();
     ctx.beginPath();
     ctx.arc(cx, cy, Math.min(area.w, area.h) / 2 - 10, 0, Math.PI * 2);
@@ -260,7 +259,6 @@ function drawWatermark(ctx: CanvasRenderingContext2D, width: number, height: num
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText("CONCEPT ONLY", width / 2, height - 40);
-  // Diagonal watermark across image
   ctx.globalAlpha = 0.06;
   ctx.translate(width / 2, height / 2);
   ctx.rotate(-Math.PI / 6);
@@ -284,23 +282,17 @@ export async function composeMockup(options: ComposeMockupOptions): Promise<stri
   ctx.fillStyle = BRAND_PALETTE.creme;
   ctx.fillRect(0, 0, W, H);
 
-  // Subtle grid pattern
+  // Subtle grid
   ctx.strokeStyle = BRAND_PALETTE.brume;
   ctx.lineWidth = 0.5;
   for (let x = 0; x < W; x += 40) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, H);
-    ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
   }
   for (let y = 0; y < H; y += 40) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(W, y);
-    ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
   }
 
-  // Garment color based on palette
+  // Garment
   const garmentColor = getPaletteColor(palette, 1) === BRAND_PALETTE.navy
     ? BRAND_PALETTE.brume
     : getPaletteColor(palette, 1);
@@ -310,7 +302,6 @@ export async function composeMockup(options: ComposeMockupOptions): Promise<stri
   const area = PRINT_AREAS[garment][placement];
 
   if (designImageUrl) {
-    // Draw existing design image
     try {
       const img = new Image();
       img.crossOrigin = "anonymous";
@@ -321,7 +312,6 @@ export async function composeMockup(options: ComposeMockupOptions): Promise<stri
       });
       ctx.drawImage(img, area.x, area.y, area.w, area.h);
     } catch {
-      // Fallback to badge if image fails
       drawOverlayBadge(ctx, area, skuName, skuType, palette);
     }
   } else {
