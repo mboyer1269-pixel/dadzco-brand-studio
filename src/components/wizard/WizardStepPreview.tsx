@@ -50,65 +50,66 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
     const placement: Placement = variantLabel === "A" ? "center" : "left_chest";
     const newVariants: PrevizVariant[] = [];
 
-    pushLog(`Generate ${variantLabel} start (${skus.length} SKUs)`);
-    setSkuErrors({});
+    try {
+      setIsGenerating(true);
+      setGeneratingLabel(variantLabel);
+      pushLog(`Generate ${variantLabel} start (${skus.length} SKUs)`);
+      setSkuErrors({});
 
-    for (let i = 0; i < skus.length; i++) {
-      const sku = skus[i];
+      for (let i = 0; i < skus.length; i++) {
+        const sku = skus[i];
 
-      try {
-        pushLog(`SKU ${i + 1}/${skus.length} ${sku.name}...`);
-        const garment = getGarmentType(sku.type, i);
-        const dataUrl = await composeMockup({
-          garment,
-          skuName: sku.name,
-          skuType: sku.type,
-          placement,
-          palette: sku.palette,
-          designImageUrl: null,
-        });
-        newVariants.push({ skuId: sku.id, variant: variantLabel, dataUrl, placement });
-        pushLog(`✅ SKU ok: ${sku.name} len=${dataUrl?.length || 0}`);
-      } catch (e: any) {
-        const msg = e?.message ? String(e.message) : String(e);
-        setSkuErrors((prev) => ({ ...prev, [sku.id]: msg }));
-        pushLog(`❌ SKU fail: ${sku.name} :: ${msg}`);
+        try {
+          pushLog(`SKU ${i + 1}/${skus.length} ${sku.name}...`);
+          const garment = getGarmentType(sku.type, i);
+          const dataUrl = await composeMockup({
+            garment,
+            skuName: sku.name,
+            skuType: sku.type,
+            placement,
+            palette: sku.palette,
+            designImageUrl: null,
+          });
+          newVariants.push({ skuId: sku.id, variant: variantLabel, dataUrl, placement });
+          pushLog(`✅ SKU ok: ${sku.name} len=${dataUrl?.length || 0}`);
+        } catch (e: any) {
+          const msg = e?.message ? String(e.message) : String(e);
+          setSkuErrors((prev) => ({ ...prev, [sku.id]: msg }));
+          pushLog(`❌ SKU fail: ${sku.name} :: ${msg}`);
+        }
       }
-    }
 
-    setVariants((prev) => [
-      ...prev.filter((v) => v.variant !== variantLabel),
-      ...newVariants,
-    ]);
-    const now = new Date().toLocaleTimeString();
-    setLastGeneratedAt(now);
-    setGenerationCounter((c) => c + 1);
-    pushLog(`Generate ${variantLabel} done. produced=${newVariants.length}`);
+      setVariants((prev) => [
+        ...prev.filter((v) => v.variant !== variantLabel),
+        ...newVariants,
+      ]);
+      const now = new Date().toLocaleTimeString();
+      setLastGeneratedAt(now);
+      setGenerationCounter((c) => c + 1);
+      pushLog(`Generate ${variantLabel} done. produced=${newVariants.length}`);
+    } finally {
+      setIsGenerating(false);
+      setGeneratingLabel(null);
+    }
   }, [skus, pushLog]);
 
   const handleRequestVariation = useCallback(async () => {
     if (variationsGenerated >= 2 || isGenerating) return;
+    pushLog("CLICK Request Variation");
     const nextVariant: "A" | "B" = variationsGenerated === 0 ? "A" : "B";
-    setIsGenerating(true);
-    setGeneratingLabel(nextVariant);
     await generateVariant(nextVariant);
     setVariationsGenerated((v) => v + 1);
     setSelectedVariant(nextVariant);
-    setIsGenerating(false);
-    setGeneratingLabel(null);
-  }, [variationsGenerated, isGenerating, generateVariant]);
+  }, [variationsGenerated, isGenerating, generateVariant, pushLog]);
 
   const handleGenerateAll = useCallback(async () => {
     if (isGenerating) return;
-    setIsGenerating(true);
-    setGeneratingLabel("ALL");
+    pushLog("CLICK Generate All");
     await generateVariant("A");
     await generateVariant("B");
     setVariationsGenerated(2);
     setSelectedVariant("A");
-    setIsGenerating(false);
-    setGeneratingLabel(null);
-  }, [isGenerating, generateVariant]);
+  }, [isGenerating, generateVariant, pushLog]);
 
   const handleApprove = useCallback((variant: "A" | "B") => {
     setApprovedVariant(variant);
@@ -306,6 +307,16 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
           </span>
         </div>
       )}
+
+      {/* Permanent debug badge */}
+      <div className="rounded-md border border-border bg-muted/30 px-3 py-1.5 flex items-center gap-4 text-[11px] font-mono text-muted-foreground">
+        <span>Debug:</span>
+        <span>logs={debugLog.length}</span>
+        <span>errors={Object.keys(skuErrors).length}</span>
+        <span>gen={generationCounter}</span>
+        <span>variants={variants.length}</span>
+        <span>generating={String(isGenerating)}</span>
+      </div>
 
       {/* SKU Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
