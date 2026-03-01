@@ -18,6 +18,11 @@ const SettingsPage = () => {
     setPinging(true);
     setPingResult(null);
     try {
+      if (!session) {
+        setPingResult("⚠️ No Supabase session. Sign in via Email (magic link) to get a real JWT.");
+        setPinging(false);
+        return;
+      }
       const { data, error } = await supabase.functions.invoke("auth-ping");
       if (error) {
         setPingResult(`❌ Error: ${error.message}`);
