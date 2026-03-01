@@ -121,8 +121,18 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
   };
 
   const hasAnyVariants = variants.length > 0;
-  const hasVariantA = variants.some((v) => v.variant === "A");
-  const hasVariantB = variants.some((v) => v.variant === "B");
+  const countA = variants.filter((v) => v.variant === "A").length;
+  const countB = variants.filter((v) => v.variant === "B").length;
+  const hasVariantA = countA > 0;
+  const hasVariantB = countB > 0;
+
+  const handleGenerateB = useCallback(async () => {
+    if (isGenerating || hasVariantB) return;
+    pushLog("CLICK Generate Variant B (one-shot)");
+    await generateVariant("B");
+    setVariationsGenerated((v) => Math.max(v, 2));
+    setSelectedVariant("B");
+  }, [isGenerating, hasVariantB, generateVariant, pushLog]);
 
   return (
     <div className="space-y-6">
@@ -135,7 +145,7 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
             Generate concept mockups, compare variants, then approve
           </p>
           <p className="text-[11px] font-mono text-destructive mt-1">
-            DBG varGen={variationsGenerated}/2 sel={selectedVariant} variants={variants.length} imgCount={skus.filter(s => !!getVariantImage(s.id, selectedVariant)).length} generating={String(isGenerating)}
+            DBG varGen={variationsGenerated}/2 sel={selectedVariant} countA={countA} countB={countB} hasA={String(hasVariantA)} hasB={String(hasVariantB)} variants={variants.length} imgCount={skus.filter(s => !!getVariantImage(s.id, selectedVariant)).length} generating={String(isGenerating)}
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -167,6 +177,21 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
             )}
             {isGenerating ? "Generating…" : `Request Variation (${variationsGenerated}/2)`}
           </Button>
+          {!hasVariantB && hasVariantA && (
+            <Button
+              onClick={handleGenerateB}
+              disabled={isGenerating}
+              variant="outline"
+              className="font-body text-xs tracking-wider uppercase"
+            >
+              {isGenerating && generatingLabel === "B" ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Wand2 className="h-4 w-4 mr-2" />
+              )}
+              {isGenerating && generatingLabel === "B" ? "Generating B…" : "Generate Variant B"}
+            </Button>
+          )}
           <Button
             onClick={onSave}
             disabled={isSaving}
@@ -246,60 +271,60 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
         </CardContent>
       </Card>
 
-      {/* Variant Selector */}
-      {hasAnyVariants && (
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-xs font-body uppercase tracking-wider text-muted-foreground">Viewing:</span>
-          <div className="flex gap-2">
-            <Button
-              variant={selectedVariant === "A" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setSelectedVariant("A")}
-              disabled={!hasVariantA}
-              className="font-body text-xs"
-            >
-              Variant A · Center
-              {approvedVariant === "A" && <CheckCircle2 className="h-3 w-3 ml-1" />}
-            </Button>
-            <Button
-              variant={selectedVariant === "B" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setSelectedVariant("B")}
-              disabled={!hasVariantB}
-              className="font-body text-xs"
-            >
-              Variant B · Left Chest
-              {approvedVariant === "B" && <CheckCircle2 className="h-3 w-3 ml-1" />}
-            </Button>
-          </div>
-          {hasVariantA && hasVariantB && !approvedVariant && (
-            <>
-              <span className="text-xs text-muted-foreground font-body mx-2">→</span>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleApprove("A")}
-                className="font-body text-xs"
-              >
-                <CheckCircle2 className="h-3 w-3 mr-1" /> Approve A
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleApprove("B")}
-                className="font-body text-xs"
-              >
-                <CheckCircle2 className="h-3 w-3 mr-1" /> Approve B
-              </Button>
-            </>
-          )}
-          {approvedVariant && (
-            <Badge variant="secondary" className="text-[10px] font-body ml-2">
-              ✓ Direction {approvedVariant} approved
-            </Badge>
-          )}
+      {/* Variant Selector — always visible */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className="text-xs font-body uppercase tracking-wider text-muted-foreground">Viewing:</span>
+        <div className="flex gap-2">
+          <Button
+            variant={selectedVariant === "A" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setSelectedVariant("A")}
+            disabled={!hasVariantA}
+            className="font-body text-xs"
+          >
+            Variant A · Center
+            {!hasVariantA && <Badge variant="outline" className="ml-1 text-[8px] font-body">(missing)</Badge>}
+            {approvedVariant === "A" && <CheckCircle2 className="h-3 w-3 ml-1" />}
+          </Button>
+          <Button
+            variant={selectedVariant === "B" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setSelectedVariant("B")}
+            disabled={!hasVariantB}
+            className="font-body text-xs"
+          >
+            Variant B · Left Chest
+            {!hasVariantB && <Badge variant="outline" className="ml-1 text-[8px] font-body">(missing)</Badge>}
+            {approvedVariant === "B" && <CheckCircle2 className="h-3 w-3 ml-1" />}
+          </Button>
         </div>
-      )}
+        {hasVariantA && hasVariantB && !approvedVariant && (
+          <>
+            <span className="text-xs text-muted-foreground font-body mx-2">→</span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleApprove("A")}
+              className="font-body text-xs"
+            >
+              <CheckCircle2 className="h-3 w-3 mr-1" /> Approve A
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleApprove("B")}
+              className="font-body text-xs"
+            >
+              <CheckCircle2 className="h-3 w-3 mr-1" /> Approve B
+            </Button>
+          </>
+        )}
+        {approvedVariant && (
+          <Badge variant="secondary" className="text-[10px] font-body ml-2">
+            ✓ Direction {approvedVariant} approved
+          </Badge>
+        )}
+      </div>
 
       {/* Generation overlay */}
       {isGenerating && (
@@ -386,7 +411,7 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
                   </div>
                   <h4 className="text-sm font-body font-medium text-foreground">{sku.name}</h4>
                   <p className="text-[9px] font-mono text-destructive">
-                    {image ? `IMG OK len=${image.length}` : "IMG MISSING"}
+                    [{selectedVariant}] {image ? `IMG OK len=${image.length}` : "IMG MISSING"} · A={getVariantImage(sku.id, "A") ? "✓" : "✗"} B={getVariantImage(sku.id, "B") ? "✓" : "✗"}
                   </p>
                   <div className="flex items-center justify-between mt-2">
                     <span className="text-sm font-body text-foreground font-medium">{formatCAD(sku.retailPrice, 0)}</span>
