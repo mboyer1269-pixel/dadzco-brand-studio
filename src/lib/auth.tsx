@@ -15,7 +15,18 @@ interface AuthContextType {
   signOut: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const defaultCtx: AuthContextType = {
+  user: null,
+  session: null,
+  isAdmin: false,
+  isLoading: true,
+  isAuthenticated: false,
+  signInWithCode: () => ({ error: new Error("AuthProvider not ready") }),
+  signInWithMagicLink: async () => ({ error: new Error("AuthProvider not ready") }),
+  signOut: async () => {},
+};
+
+const AuthContext = createContext<AuthContextType>(defaultCtx);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -79,7 +90,5 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 }
 
 export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
-  return ctx;
+  return useContext(AuthContext);
 }
