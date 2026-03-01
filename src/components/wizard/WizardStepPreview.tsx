@@ -149,49 +149,32 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          {!hasAnyVariants && (
-            <Button
-              onClick={handleGenerateAll}
-              disabled={isGenerating}
-              variant="outline"
-              className="font-body text-xs tracking-wider uppercase"
-            >
-              {isGenerating ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Wand2 className="h-4 w-4 mr-2" />
-              )}
-              {isGenerating ? "Generating…" : "Generate Previz"}
-            </Button>
-          )}
           <Button
-            onClick={handleRequestVariation}
-            disabled={isGenerating || variationsGenerated >= 2}
+            onClick={() => generateVariant("A")}
+            disabled={isGenerating}
             variant="outline"
             className="font-body text-xs tracking-wider uppercase"
           >
-            {isGenerating ? (
+            {isGenerating && generatingLabel === "A" ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             ) : (
-              <RotateCcw className="h-4 w-4 mr-2" />
+              <Wand2 className="h-4 w-4 mr-2" />
             )}
-            {isGenerating ? "Generating…" : `Request Variation (${variationsGenerated}/2)`}
+            {isGenerating && generatingLabel === "A" ? "Generating A…" : "Generate Variant A (Center)"}
           </Button>
-          {!hasVariantB && hasVariantA && (
-            <Button
-              onClick={handleGenerateB}
-              disabled={isGenerating}
-              variant="outline"
-              className="font-body text-xs tracking-wider uppercase"
-            >
-              {isGenerating && generatingLabel === "B" ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Wand2 className="h-4 w-4 mr-2" />
-              )}
-              {isGenerating && generatingLabel === "B" ? "Generating B…" : "Generate Variant B"}
-            </Button>
-          )}
+          <Button
+            onClick={() => generateVariant("B")}
+            disabled={isGenerating}
+            variant="outline"
+            className="font-body text-xs tracking-wider uppercase"
+          >
+            {isGenerating && generatingLabel === "B" ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Wand2 className="h-4 w-4 mr-2" />
+            )}
+            {isGenerating && generatingLabel === "B" ? "Generating B…" : "Generate Variant B (Left Chest)"}
+          </Button>
           <Button
             onClick={onSave}
             disabled={isSaving}
