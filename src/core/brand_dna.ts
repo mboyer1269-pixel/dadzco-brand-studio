@@ -23,7 +23,7 @@ export const BRAND_DNA = {
     parent_style: "Minimaliste sophistiqué",
     child_style: "Narratif AOP premium",
     matching_rule: "Complémentaire, jamais identique",
-    negative_space_minimum: 0.7,
+    negative_space_minimum: 70,
     patch_signature: "Bas hoodie ou crewneck"
   },
 

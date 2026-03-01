@@ -29,7 +29,7 @@ const REFINED_ALTERNATIVES: Record<string, string> = {
   "excessive pattern density": "restrained motif, generous negative space",
 };
 
-// --- Core validation engine ---
+// --- Core validation engine (STRICT MODE) ---
 
 export function validateConcept(concept: {
   prompt?: string;
@@ -68,23 +68,21 @@ export function validateConcept(concept: {
     }
   }
 
-  // 3) Minimum margin constraint
-  if (
-    concept.margin_pct !== undefined &&
-    concept.margin_pct < BRAND_DNA.financial_constraints.minimum_margin_pct
-  ) {
+  // 3) Margin — REQUIRED
+  if (concept.margin_pct === undefined || concept.margin_pct === null) {
+    violated.push("Margin not provided");
+  } else if (concept.margin_pct < BRAND_DNA.financial_constraints.minimum_margin_pct) {
     violated.push(
       `Margin ${concept.margin_pct}% < minimum ${BRAND_DNA.financial_constraints.minimum_margin_pct}%`
     );
   }
 
-  // 4) Visual identity — negative space
-  if (
-    concept.negative_space_pct !== undefined &&
-    concept.negative_space_pct < BRAND_DNA.visual_identity.negative_space_minimum
-  ) {
+  // 4) Negative space — REQUIRED (0–100 scale)
+  if (concept.negative_space_pct === undefined || concept.negative_space_pct === null) {
+    violated.push("Negative space not provided");
+  } else if (concept.negative_space_pct < BRAND_DNA.visual_identity.negative_space_minimum) {
     violated.push(
-      `Negative space ${concept.negative_space_pct} < minimum ${BRAND_DNA.visual_identity.negative_space_minimum}`
+      `Negative space ${concept.negative_space_pct}% < minimum ${BRAND_DNA.visual_identity.negative_space_minimum}%`
     );
   }
 
@@ -92,13 +90,32 @@ export function validateConcept(concept: {
     return { status: "rejected", reason: "DNA violation", violated_rules: violated };
   }
 
-  // Score: base 70, +10 if margin provided & healthy, +10 if space provided & healthy, +10 if prompt clean
+  // Score: base 70, +10 if margin healthy, +10 if space healthy, +10 if prompt clean
   let score = 70;
   if (concept.margin_pct && concept.margin_pct >= BRAND_DNA.financial_constraints.minimum_margin_pct + 10) score += 10;
-  if (concept.negative_space_pct && concept.negative_space_pct >= BRAND_DNA.visual_identity.negative_space_minimum + 0.1) score += 10;
+  if (concept.negative_space_pct && concept.negative_space_pct >= BRAND_DNA.visual_identity.negative_space_minimum + 10) score += 10;
   if (concept.prompt && concept.prompt.length > 10) score += 10;
 
   return { status: "approved", dna_score: Math.min(score, 100) };
+}
+
+// --- Strict enforcement helper (throws on rejection) ---
+
+export function enforceDNAGuard(concept: {
+  prompt?: string;
+  margin_pct?: number;
+  negative_space_pct?: number;
+  tone_keywords?: string[];
+}): DNAApproved {
+  const result = validateConcept(concept);
+
+  if (result.status === "rejected") {
+    throw new Error(
+      "DNA BLOCKED: " + result.violated_rules.join(" | ")
+    );
+  }
+
+  return result;
 }
 
 // --- UI Component ---
@@ -140,7 +157,7 @@ export function DNAGuard({ prompt, mode, margin_pct, negative_space_pct }: DNAGu
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-sm font-body font-medium">
           <Shield className="h-4 w-4" />
-          DNA Guard
+          DNA Guard · Strict
           <span className="ml-auto text-xs text-muted-foreground font-normal">
             {modeLabel}
           </span>
@@ -164,7 +181,7 @@ export function DNAGuard({ prompt, mode, margin_pct, negative_space_pct }: DNAGu
             <div className="flex items-center gap-2 text-xs text-destructive font-body">
               <AlertTriangle className="h-3.5 w-3.5" />
               {(result as DNARejected).violated_rules.length} violation
-              {(result as DNARejected).violated_rules.length > 1 ? "s" : ""} — rejected
+              {(result as DNARejected).violated_rules.length > 1 ? "s" : ""} — BLOCKED
             </div>
             {(result as DNARejected).violated_rules.map((rule, i) => (
               <div key={i} className="bg-muted rounded-md p-2.5">
@@ -187,8 +204,8 @@ export function DNAGuard({ prompt, mode, margin_pct, negative_space_pct }: DNAGu
         <div className="pt-2 border-t border-border">
           <p className="text-[10px] text-muted-foreground font-body leading-relaxed">
             {mode === "quiet"
-              ? `Quiet Luxury: ${BRAND_DNA.visual_identity.negative_space_minimum * 100}% negative space · anti-kitsch · min ${BRAND_DNA.financial_constraints.minimum_margin_pct}% margin`
-              : `Funny Premium: elegant witty typography · no childish graphics · min ${BRAND_DNA.financial_constraints.minimum_margin_pct}% margin`}
+              ? `Strict · Quiet Luxury: ≥${BRAND_DNA.visual_identity.negative_space_minimum}% negative space · anti-kitsch · ≥${BRAND_DNA.financial_constraints.minimum_margin_pct}% margin`
+              : `Strict · Funny Premium: elegant witty typography · no childish graphics · ≥${BRAND_DNA.financial_constraints.minimum_margin_pct}% margin`}
           </p>
         </div>
       </CardContent>
