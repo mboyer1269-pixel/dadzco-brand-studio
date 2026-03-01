@@ -8,6 +8,7 @@ import {
   LogOut,
   Moon,
   Sun,
+  Calculator,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/lib/auth";
@@ -31,6 +32,7 @@ const navItems = [
   { title: "Brand", url: "/brand", icon: Palette },
   { title: "Create", url: "/create", icon: Wand2 },
   { title: "Collections", url: "/collections", icon: FolderOpen },
+  { title: "Financial", url: "/financial", icon: Calculator },
   { title: "Launch", url: "/launch", icon: Rocket },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
