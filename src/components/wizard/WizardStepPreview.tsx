@@ -134,6 +134,9 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
           <p className="text-sm text-muted-foreground font-body mt-1">
             Generate concept mockups, compare variants, then approve
           </p>
+          <p className="text-[11px] font-mono text-destructive mt-1">
+            DBG varGen={variationsGenerated}/2 sel={selectedVariant} variants={variants.length} imgCount={skus.filter(s => !!getVariantImage(s.id, selectedVariant)).length} generating={String(isGenerating)}
+          </p>
         </div>
         <div className="flex gap-2 flex-wrap">
           {!hasAnyVariants && (
@@ -382,6 +385,9 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
                     )}
                   </div>
                   <h4 className="text-sm font-body font-medium text-foreground">{sku.name}</h4>
+                  <p className="text-[9px] font-mono text-destructive">
+                    {image ? `IMG OK len=${image.length}` : "IMG MISSING"}
+                  </p>
                   <div className="flex items-center justify-between mt-2">
                     <span className="text-sm font-body text-foreground font-medium">{formatCAD(sku.retailPrice, 0)}</span>
                     <span className={`text-xs font-body ${sku.marginPct >= 55 ? "text-green-600 dark:text-green-400" : "text-destructive"}`}>
