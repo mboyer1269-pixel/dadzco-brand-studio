@@ -22,7 +22,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
             <div className="flex items-center gap-3">
               <LeonardoCredits />
               <span className="text-xs text-muted-foreground font-body hidden md:inline">
-                {user?.email}
+                {user?.email || "Not signed in"}
               </span>
               <div className="h-7 w-7 rounded-full bg-lavande/20 flex items-center justify-center transition-colors hover:bg-lavande/30">
                 <span className="text-xs font-medium text-foreground font-body">

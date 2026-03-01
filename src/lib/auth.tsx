@@ -2,7 +2,6 @@ import { createContext, useContext, useEffect, useState, ReactNode } from "react
 import { supabase } from "@/integrations/supabase/client";
 import type { User, Session } from "@supabase/supabase-js";
 
-const ADMIN_EMAIL = "dadzco.brand@gmail.com";
 const ACCESS_CODE = "0413";
 
 interface AuthContextType {
@@ -21,26 +20,28 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [isCodeAuthenticated, setIsCodeAuthenticated] = useState(() => {
     return sessionStorage.getItem("dadzco_auth") === "true";
   });
 
-  const isAdmin = isCodeAuthenticated || user?.email === ADMIN_EMAIL;
-  const isAuthenticated = isCodeAuthenticated || !!user;
+  const isAdmin = !!user || isCodeAuthenticated;
+  const isAuthenticated = !!session || isCodeAuthenticated;
 
   useEffect(() => {
+    // Set up auth listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
+      (_event, newSession) => {
+        setSession(newSession);
+        setUser(newSession?.user ?? null);
         setIsLoading(false);
       }
     );
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+    // THEN check existing session
+    supabase.auth.getSession().then(({ data: { session: existingSession } }) => {
+      setSession(existingSession);
+      setUser(existingSession?.user ?? null);
       setIsLoading(false);
     });
 
@@ -57,9 +58,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signInWithMagicLink = async (email: string) => {
-    if (email.toLowerCase() !== ADMIN_EMAIL) {
-      return { error: new Error("Access restricted.") };
-    }
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: { emailRedirectTo: window.location.origin },
