@@ -25,6 +25,7 @@ import Storytelling from "./pages/Storytelling";
 import Exports from "./pages/Exports";
 import CalendarPlanner from "./pages/CalendarPlanner";
 import RoundTable from "./pages/RoundTable";
+import FinancialEngine from "./pages/FinancialEngine";
 
 const queryClient = new QueryClient();
 
@@ -74,6 +75,7 @@ const App = () => (
               <Route path="/create" element={<ProtectedRoute><Create /></ProtectedRoute>} />
               <Route path="/collections" element={<ProtectedRoute><Collections /></ProtectedRoute>} />
               <Route path="/collections/new" element={<ProtectedRoute><CollectionWizard /></ProtectedRoute>} />
+              <Route path="/financial" element={<ProtectedRoute><FinancialEngine /></ProtectedRoute>} />
               <Route path="/launch" element={<ProtectedRoute><Launch /></ProtectedRoute>} />
               <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
 
