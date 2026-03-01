@@ -308,17 +308,16 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
         </div>
       )}
 
-      {/* Permanent debug badge */}
+      {/* Status bar */}
       <div className="rounded-md border border-border bg-muted/30 px-3 py-1.5 flex flex-col gap-1 text-[11px] font-mono text-muted-foreground">
-        <div className="flex items-center gap-4">
-          <span>Debug:</span>
-          <span>logs={debugLog.length}</span>
-          <span>errors={Object.keys(skuErrors).length}</span>
+        <div className="flex items-center gap-4 flex-wrap">
+          <span className="font-bold">Selected: {selectedVariant}</span>
+          <span>variants stored: {variants.length}</span>
           <span>gen={generationCounter}</span>
-          <span>variants={variants.length}</span>
+          <span>errors={Object.keys(skuErrors).length}</span>
           <span>generating={String(isGenerating)}</span>
         </div>
-        <div>Last action: {debugLog[0] || "none"}</div>
+        <div>Last: {debugLog[0] || "none"}</div>
       </div>
 
       {/* SKU Grid */}
@@ -334,14 +333,12 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
                     <img
                       src={image}
                       alt={`${sku.name} - Variant ${selectedVariant}`}
-                      className="w-full h-full object-contain rounded-t-lg"
+                      className="w-full h-full object-cover rounded-xl"
                     />
                   ) : (
                     <div className="text-center p-6">
-                      <ImageIcon className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
-                      <p className="text-xs text-muted-foreground font-body mb-2">
-                        {sku.name}
-                      </p>
+                      <p className="text-xs text-muted-foreground font-body mb-1">{sku.name}</p>
+                      <p className="text-[10px] text-muted-foreground/60 font-body mb-2">Variant {selectedVariant}</p>
                       {errorMsg && (
                         <p className="text-[10px] text-destructive font-body mb-2 break-words">
                           {errorMsg.length > 120 ? `${errorMsg.slice(0, 120)}…` : errorMsg}
