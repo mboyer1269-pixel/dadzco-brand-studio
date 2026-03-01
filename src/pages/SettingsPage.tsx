@@ -4,10 +4,31 @@ import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
 
 const SettingsPage = () => {
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const [pingResult, setPingResult] = useState<string | null>(null);
+  const [pinging, setPinging] = useState(false);
+
+  const handlePing = async () => {
+    setPinging(true);
+    setPingResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("auth-ping");
+      if (error) {
+        setPingResult(`❌ Error: ${error.message}`);
+      } else {
+        setPingResult(`✅ ${JSON.stringify(data)}`);
+      }
+    } catch (e: any) {
+      setPingResult(`❌ ${e.message}`);
+    }
+    setPinging(false);
+  };
 
   return (
     <AppLayout>
@@ -26,12 +47,51 @@ const SettingsPage = () => {
           <CardContent className="space-y-3">
             <div className="flex items-center justify-between">
               <Label className="text-xs font-body text-muted-foreground uppercase tracking-wider">Email</Label>
-              <span className="text-sm font-body text-foreground">{user?.email}</span>
+              <span className="text-sm font-body text-foreground">
+                {user?.email || "Not signed in"}
+              </span>
             </div>
             <div className="flex items-center justify-between">
               <Label className="text-xs font-body text-muted-foreground uppercase tracking-wider">Role</Label>
               <span className="text-sm font-body text-foreground">Administrator</span>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Auth Debug Box */}
+        <Card className="border-border">
+          <CardHeader>
+            <CardTitle className="font-body text-base">Auth Debug</CardTitle>
+            <CardDescription className="font-body">Session & identity status</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-body text-muted-foreground uppercase tracking-wider">Session exists</Label>
+              <span className={`text-xs font-body font-medium ${session ? "text-green-500" : "text-destructive"}`}>
+                {session ? "Yes" : "No"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-body text-muted-foreground uppercase tracking-wider">User ID present</Label>
+              <span className={`text-xs font-body font-medium ${user?.id ? "text-green-500" : "text-destructive"}`}>
+                {user?.id ? "Yes" : "No"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-body text-muted-foreground uppercase tracking-wider">Email shown</Label>
+              <span className={`text-xs font-body font-medium ${user?.email ? "text-green-500" : "text-destructive"}`}>
+                {user?.email ? "Yes" : "No"}
+              </span>
+            </div>
+            <div className="pt-3 border-t border-border flex items-center justify-between">
+              <span className="text-xs font-body text-muted-foreground">Edge auth verification</span>
+              <Button variant="outline" size="sm" onClick={handlePing} disabled={pinging} className="font-body text-xs">
+                {pinging ? "Pinging…" : "Ping Edge Auth"}
+              </Button>
+            </div>
+            {pingResult && (
+              <p className="text-xs font-body text-muted-foreground break-all bg-muted/30 rounded p-2">{pingResult}</p>
+            )}
           </CardContent>
         </Card>
 

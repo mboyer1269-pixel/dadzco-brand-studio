@@ -35,3 +35,6 @@ verify_jwt = false
 
 [functions.create-export-pack]
 verify_jwt = false
+
+[functions.auth-ping]
+verify_jwt = false
