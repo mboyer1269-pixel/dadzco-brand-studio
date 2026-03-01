@@ -32,6 +32,13 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
   const [approvedVariant, setApprovedVariant] = useState<"A" | "B" | null>(null);
   const [lastGeneratedAt, setLastGeneratedAt] = useState<string | null>(null);
   const [generationCounter, setGenerationCounter] = useState(0);
+  const [debugLog, setDebugLog] = useState<string[]>([]);
+  const [skuErrors, setSkuErrors] = useState<Record<string, string>>({});
+  const [showDebug, setShowDebug] = useState(false);
+
+  const pushLog = useCallback((msg: string) => {
+    setDebugLog((prev) => [`${new Date().toLocaleTimeString()} ${msg}`, ...prev].slice(0, 30));
+  }, []);
 
   const totalRetail = skus.reduce((s, k) => s + k.retailPrice, 0);
   const avgMargin = skus.length > 0 ? skus.reduce((s, k) => s + k.marginPct, 0) / skus.length : 0;
@@ -43,18 +50,30 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
     const placement: Placement = variantLabel === "A" ? "center" : "left_chest";
     const newVariants: PrevizVariant[] = [];
 
+    pushLog(`Generate ${variantLabel} start (${skus.length} SKUs)`);
+    setSkuErrors({});
+
     for (let i = 0; i < skus.length; i++) {
       const sku = skus[i];
-      const garment = getGarmentType(sku.type, i);
-      const dataUrl = await composeMockup({
-        garment,
-        skuName: sku.name,
-        skuType: sku.type,
-        placement,
-        palette: sku.palette,
-        designImageUrl: null,
-      });
-      newVariants.push({ skuId: sku.id, variant: variantLabel, dataUrl, placement });
+
+      try {
+        pushLog(`SKU ${i + 1}/${skus.length} ${sku.name}...`);
+        const garment = getGarmentType(sku.type, i);
+        const dataUrl = await composeMockup({
+          garment,
+          skuName: sku.name,
+          skuType: sku.type,
+          placement,
+          palette: sku.palette,
+          designImageUrl: null,
+        });
+        newVariants.push({ skuId: sku.id, variant: variantLabel, dataUrl, placement });
+        pushLog(`✅ SKU ok: ${sku.name} len=${dataUrl?.length || 0}`);
+      } catch (e: any) {
+        const msg = e?.message ? String(e.message) : String(e);
+        setSkuErrors((prev) => ({ ...prev, [sku.id]: msg }));
+        pushLog(`❌ SKU fail: ${sku.name} :: ${msg}`);
+      }
     }
 
     setVariants((prev) => [
@@ -64,7 +83,8 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
     const now = new Date().toLocaleTimeString();
     setLastGeneratedAt(now);
     setGenerationCounter((c) => c + 1);
-  }, [skus]);
+    pushLog(`Generate ${variantLabel} done. produced=${newVariants.length}`);
+  }, [skus, pushLog]);
 
   const handleRequestVariation = useCallback(async () => {
     if (variationsGenerated >= 2 || isGenerating) return;
@@ -152,6 +172,35 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
             {isSaving ? "Saving…" : "Save Collection"}
           </Button>
         </div>
+      </div>
+
+      <div className="rounded-lg border border-border bg-background p-3">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-body uppercase tracking-wider text-muted-foreground">Previz Debug</span>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setShowDebug((v) => !v)}
+            className="font-body text-[10px]"
+          >
+            {showDebug ? "Hide Debug" : "Show Debug"}
+          </Button>
+        </div>
+        {showDebug && (
+          <div className="mt-3 max-h-40 overflow-y-auto rounded border border-border bg-muted/40 p-2">
+            {debugLog.length === 0 ? (
+              <p className="text-[11px] text-muted-foreground font-body">No logs yet.</p>
+            ) : (
+              <div className="space-y-1">
+                {debugLog.map((line, idx) => (
+                  <p key={`${line}-${idx}`} className="text-[11px] font-mono text-foreground/90 break-words">
+                    {line}
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Summary Card */}
@@ -262,6 +311,7 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {skus.map((sku) => {
           const image = getVariantImage(sku.id, selectedVariant);
+          const errorMsg = skuErrors[sku.id];
           return (
             <Card key={sku.id} className="border-border overflow-hidden">
               <CardContent className="p-0">
@@ -304,6 +354,16 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
                         {selectedVariant === "A" ? "Center" : "Left Chest"}
                       </Badge>
                     )}
+                    {image && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => window.open(image, "_blank")}
+                        className="h-5 px-2 text-[9px] font-body"
+                      >
+                        Open
+                      </Button>
+                    )}
                   </div>
                   <h4 className="text-sm font-body font-medium text-foreground">{sku.name}</h4>
                   <div className="flex items-center justify-between mt-2">
@@ -313,9 +373,19 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
                     </span>
                   </div>
                   {/* Debug info */}
-                  {image && lastGeneratedAt && (
+                  {image && (
                     <p className="text-[9px] text-muted-foreground font-body mt-1.5">
+                      Gen OK · len={image.length}
+                    </p>
+                  )}
+                  {image && lastGeneratedAt && (
+                    <p className="text-[9px] text-muted-foreground font-body mt-1">
                       Gen #{generationCounter} · Variant {selectedVariant} · {lastGeneratedAt}
+                    </p>
+                  )}
+                  {errorMsg && (
+                    <p className="text-[10px] text-destructive font-body mt-1.5 break-words">
+                      {errorMsg.length > 120 ? `${errorMsg.slice(0, 120)}…` : errorMsg}
                     </p>
                   )}
                 </div>
