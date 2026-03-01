@@ -66,6 +66,7 @@ export default function CollectionWizard() {
   });
 
   const [isSaving, setIsSaving] = useState(false);
+  const [approvedVariant, setApprovedVariant] = useState<"A" | "B" | null>(null);
 
   const canProceed = () => {
     switch (state.step) {
@@ -152,7 +153,12 @@ export default function CollectionWizard() {
           season: state.season,
           user_id: user.id,
           status: "draft",
-          metadata: { type: state.collectionType, palette: state.palette, style: state.style },
+          metadata: {
+            type: state.collectionType,
+            palette: state.palette,
+            style: state.style,
+            approvedVariant: approvedVariant || null,
+          },
         })
         .select()
         .single();
@@ -287,6 +293,7 @@ export default function CollectionWizard() {
               skus={state.skus}
               onSave={handleSave}
               isSaving={isSaving}
+              onApproveVariant={(v) => setApprovedVariant(v)}
             />
           )}
         </div>
