@@ -84,7 +84,15 @@ function extractJSON(text: string): string {
   return cleaned.substring(firstBrace, lastBrace + 1);
 }
 
-/* ── Validate collection schema ── */
+/* ── Validate collection schema + DNA constraints ── */
+const BRAND_DNA_CONSTRAINTS = {
+  minimum_margin_pct: 55,
+  negative_space_minimum: 70,
+  forbidden_elements: [
+    "cartoon", "kawaii", "clipart", "rainbow overload", "glitter", "excessive pattern density"
+  ],
+};
+
 function validateCollections(data: Record<string, unknown>): Record<string, unknown> {
   const collections = data.collections;
   if (!Array.isArray(collections) || collections.length === 0) {
@@ -101,6 +109,30 @@ function validateCollections(data: Record<string, unknown>): Record<string, unkn
     if (typeof c.concept_score !== "number") c.concept_score = 75;
     if (!c.status) c.status = "concept";
     if (!c.agent_notes || typeof c.agent_notes !== "object") c.agent_notes = {};
+
+    // DNA enforcement: check theme for forbidden elements
+    const themeLower = String(c.theme || "").toLowerCase() + " " + String(c.name || "").toLowerCase();
+    const violations: string[] = [];
+    for (const forbidden of BRAND_DNA_CONSTRAINTS.forbidden_elements) {
+      if (themeLower.includes(forbidden.toLowerCase())) {
+        violations.push(`Forbidden element: "${forbidden}"`);
+      }
+    }
+
+    // DNA enforcement: check SKU margins
+    for (const sku of (c.skus as Record<string, unknown>[])) {
+      if (typeof sku.margin_target === "number" && sku.margin_target < BRAND_DNA_CONSTRAINTS.minimum_margin_pct) {
+        violations.push(`SKU "${sku.name}" margin ${sku.margin_target}% < ${BRAND_DNA_CONSTRAINTS.minimum_margin_pct}%`);
+      }
+    }
+
+    if (violations.length > 0) {
+      (c as Record<string, unknown>).dna_status = "rejected";
+      (c as Record<string, unknown>).dna_violations = violations;
+      console.log("DNA rejected collection:", c.name, violations);
+    } else {
+      (c as Record<string, unknown>).dna_status = "approved";
+    }
   }
   return data;
 }
