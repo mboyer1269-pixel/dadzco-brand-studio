@@ -20,11 +20,11 @@ const FALLBACK_FORBIDDEN = [
 ];
 
 const FALLBACK_PALETTE = [
-  { name: "Sable", hex: "#C2B280", usage: "primary" },
-  { name: "Brume", hex: "#B0C4DE", usage: "secondary" },
-  { name: "Navy", hex: "#1B2A4A", usage: "accent" },
-  { name: "Crème", hex: "#FFFDD0", usage: "background" },
-  { name: "Lavande", hex: "#B57EDC", usage: "highlight" },
+  { name: "Sable", hex: "#CBBFA9", usage: "primary" },
+  { name: "Brume", hex: "#E7E4DE", usage: "secondary" },
+  { name: "Navy", hex: "#0B1B2B", usage: "accent" },
+  { name: "Crème", hex: "#F7F2E8", usage: "background" },
+  { name: "Lavande", hex: "#C9C3D6", usage: "highlight" },
 ];
 
 function ok200(body: Record<string, unknown>) {
@@ -159,34 +159,35 @@ Be thorough and specific. Return valid JSON only.`;
       };
     }
 
-    // --- Merge strategy: don't overwrite existing palette ---
-    const { data: existingRules } = await adminClient
+    // --- Merge strategy: upsert by user_id, preserve existing palette ---
+    const { data: existingRow } = await adminClient
       .from("brand_rules")
       .select("palette, rules")
-      .eq("brand_file_id", brandFileId)
+      .eq("user_id", user.id)
       .maybeSingle();
 
-    const existingPalette = existingRules?.palette;
+    const existingPalette = existingRow?.palette;
     const hasExistingPalette = Array.isArray(existingPalette) && existingPalette.length > 0;
 
-    // Deep-merge rules: keep existing + add new unique ones
+    // Deep-merge rules: keep existing + append new unique ones
     let mergedRules = extracted!.rules || FALLBACK_RULES;
-    if (Array.isArray(existingRules?.rules) && existingRules.rules.length > 0) {
+    if (Array.isArray(existingRow?.rules) && existingRow.rules.length > 0) {
       const existingRuleTexts = new Set(
-        (existingRules.rules as Array<{ rule: string }>).map((r) => r.rule)
+        (existingRow.rules as Array<{ rule: string }>).map((r) => r.rule)
       );
       const newRules = (mergedRules as Array<{ rule: string }>).filter(
         (r) => !existingRuleTexts.has(r.rule)
       );
-      mergedRules = [...existingRules.rules, ...newRules];
+      mergedRules = [...existingRow.rules, ...newRules];
     }
 
     const finalPalette = hasExistingPalette ? existingPalette : (extracted!.palette || FALLBACK_PALETTE);
 
-    // Delete old rules for this file, then insert
-    await adminClient.from("brand_rules").delete().eq("brand_file_id", brandFileId);
+    const rawSummary = fallbackUsed
+      ? `fallbackUsed:true;${reason}`
+      : (extracted!.summary as string) || null;
 
-    const { error: insertError } = await adminClient.from("brand_rules").insert({
+    const { error: upsertError } = await adminClient.from("brand_rules").upsert({
       user_id: user.id,
       brand_file_id: brandFileId,
       category: (extracted!.category as string) || "general",
@@ -194,16 +195,14 @@ Be thorough and specific. Return valid JSON only.`;
       palette: finalPalette,
       forbidden_keywords: extracted!.forbidden_keywords || FALLBACK_FORBIDDEN,
       typography: extracted!.typography || [],
-      raw_summary: fallbackUsed
-        ? `fallbackUsed:true;${reason}`
-        : (extracted!.summary as string) || null,
-    });
+      raw_summary: rawSummary,
+    }, { onConflict: "user_id" });
 
-    if (insertError) {
-      console.error("Insert error:", insertError);
+    if (upsertError) {
+      console.error("Upsert error:", upsertError);
       return ok200({
         ok: false,
-        reason: `DB insert failed: ${insertError.message}`,
+        reason: `DB upsert failed: ${upsertError.message}`,
         fallbackUsed,
         details: null,
       });
@@ -213,6 +212,9 @@ Be thorough and specific. Return valid JSON only.`;
       ok: !fallbackUsed,
       fallbackUsed,
       reason: fallbackUsed ? reason : undefined,
+      saved: true,
+      userId: user.id,
+      brandFileId,
       extracted,
     });
   } catch (e) {

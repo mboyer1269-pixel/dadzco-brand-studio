@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX IF NOT EXISTS brand_rules_user_id_unique ON public.brand_rules (user_id);
