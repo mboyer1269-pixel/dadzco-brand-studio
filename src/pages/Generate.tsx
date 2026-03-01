@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
-import { DNAGuard } from "@/components/DNAGuard";
+import { DNAGuard, enforceDNAGuard } from "@/components/DNAGuard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Sparkles, Loader2, Image as ImageIcon } from "lucide-react";
+import { Sparkles, Loader2, Image as ImageIcon, ShieldAlert } from "lucide-react";
 
 const PRODUCT_TYPES = [
   "Adult Tee", "Adult Hoodie", "Kid Tee", "Kid Hoodie", "Kids AOP",
@@ -29,10 +29,20 @@ const Generate = () => {
   const [paletteLocked, setPaletteLocked] = useState(true);
   const [seed, setSeed] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedImage, setGeneratedImage] = useState<string | null>(null);
+  const [dnaBlockMessage, setDnaBlockMessage] = useState<string | null>(null);
 
   const handleGenerate = async () => {
+    setDnaBlockMessage(null);
     setIsGenerating(true);
     try {
+      // DNA Guard enforcement — blocks before any API call
+      enforceDNAGuard({
+        prompt,
+        margin_pct: 55, // default from brand DNA minimum
+        negative_space_pct: negativeSpace[0],
+      });
+
       const { data, error } = await (await import("@/integrations/supabase/client")).supabase.functions.invoke("generate-mockup", {
         body: {
           prompt: `${mode === "quiet" ? "Minimalist luxury" : "Witty premium humor"} ${productType} ${printType} design. ${prompt}. Negative space ${negativeSpace[0]}%.`,
@@ -44,12 +54,15 @@ const Generate = () => {
         setGeneratedImage(data.imageUrl);
       }
     } catch (e: any) {
-      console.error("Generate error:", e);
+      if (e?.message?.startsWith("DNA BLOCKED:")) {
+        setDnaBlockMessage(e.message);
+      } else {
+        console.error("Generate error:", e);
+      }
     } finally {
       setIsGenerating(false);
     }
   };
-  const [generatedImage, setGeneratedImage] = useState<string | null>(null);
 
   return (
     <AppLayout>
@@ -199,6 +212,19 @@ const Generate = () => {
               </div>
             </div>
 
+            {/* DNA Block Message */}
+            {dnaBlockMessage && (
+              <Card className="border-destructive bg-destructive/5">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <ShieldAlert className="h-5 w-5 text-destructive shrink-0" />
+                  <div>
+                    <p className="text-xs font-body font-medium text-destructive">Generation Blocked by DNA Guard</p>
+                    <p className="text-[11px] font-body text-destructive/80 mt-0.5">{dnaBlockMessage}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Generate Button */}
             <Button
               onClick={handleGenerate}
@@ -221,7 +247,7 @@ const Generate = () => {
 
           {/* Right: DNA Guard + Preview */}
           <div className="space-y-6">
-            <DNAGuard prompt={prompt} mode={mode} />
+            <DNAGuard prompt={prompt} mode={mode} margin_pct={55} negative_space_pct={negativeSpace[0]} />
 
             {/* Preview area */}
             <Card className="border-border border-dashed">

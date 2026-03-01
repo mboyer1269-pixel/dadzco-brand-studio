@@ -1,11 +1,13 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Download, Save, Image as ImageIcon, Wand2, CheckCircle2, RotateCcw, Loader2 } from "lucide-react";
+import { Download, Save, Image as ImageIcon, Wand2, CheckCircle2, RotateCcw, Loader2, ShieldAlert } from "lucide-react";
 import type { WizardSKU } from "@/lib/collection-types";
 import { formatCAD } from "@/lib/pricing";
 import { composeMockup, getGarmentType, type Placement } from "@/lib/compose-mockup";
+import { validateConcept, type DNAValidationResult } from "@/components/DNAGuard";
+import { BRAND_DNA } from "@/core/brand_dna";
 
 interface Props {
   name: string;
@@ -45,6 +47,18 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
   const quietCount = skus.filter((s) => s.type === "quiet").length;
   const funnyCount = skus.filter((s) => s.type === "funny").length;
   const heroCount = skus.filter((s) => s.type === "hero").length;
+
+  // DNA validation for the collection — checks avg margin and default negative space
+  const dnaResult: DNAValidationResult = useMemo(() => {
+    const minMargin = skus.length > 0 ? Math.min(...skus.map((s) => s.marginPct)) : 0;
+    return validateConcept({
+      prompt: name,
+      margin_pct: minMargin,
+      negative_space_pct: 70, // wizard default
+    });
+  }, [skus, name]);
+
+  const isDNABlocked = dnaResult.status === "rejected";
 
   const generateVariant = useCallback(async (variantLabel: "A" | "B") => {
     const placement: Placement = variantLabel === "A" ? "center" : "left_chest";
@@ -151,7 +165,7 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
         <div className="flex gap-2 flex-wrap">
           <Button
             onClick={() => generateVariant("A")}
-            disabled={isGenerating}
+            disabled={isGenerating || isDNABlocked}
             variant="outline"
             className="font-body text-xs tracking-wider uppercase"
           >
@@ -164,7 +178,7 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
           </Button>
           <Button
             onClick={() => generateVariant("B")}
-            disabled={isGenerating}
+            disabled={isGenerating || isDNABlocked}
             variant="outline"
             className="font-body text-xs tracking-wider uppercase"
           >
@@ -185,6 +199,26 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
           </Button>
         </div>
       </div>
+
+      {/* DNA Guard Block Banner */}
+      {isDNABlocked && (
+        <Card className="border-destructive bg-destructive/5">
+          <CardContent className="p-4 flex items-start gap-3">
+            <ShieldAlert className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs font-body font-medium text-destructive">
+                Generation Blocked — DNA Guard Violation
+              </p>
+              {dnaResult.status === "rejected" && dnaResult.violated_rules.map((rule, i) => (
+                <p key={i} className="text-[11px] font-body text-destructive/80 mt-0.5">• {rule}</p>
+              ))}
+              <p className="text-[10px] font-body text-muted-foreground mt-2">
+                Fix margin or prompt violations before generating previz.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="rounded-lg border border-border bg-background p-3">
         <div className="flex items-center justify-between gap-2">

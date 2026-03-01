@@ -16,11 +16,35 @@ serve(async (req) => {
   const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
   try {
-    const { prompt, skuName, production, collectionId, skuId } = await req.json();
+    const { prompt, skuName, production, collectionId, skuId, margin_pct, negative_space_pct } = await req.json();
     if (!prompt) {
       return new Response(JSON.stringify({ error: "Missing prompt" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // ── Server-side DNA enforcement ──
+    const DNA_FORBIDDEN = ["cartoon", "kawaii", "clipart", "rainbow overload", "glitter", "excessive pattern density"];
+    const DNA_MIN_MARGIN = 55;
+    const DNA_MIN_SPACE = 70;
+    const dnaViolations: string[] = [];
+    const promptLower = prompt.toLowerCase();
+    for (const f of DNA_FORBIDDEN) {
+      if (promptLower.includes(f.toLowerCase())) dnaViolations.push(`Forbidden: "${f}"`);
+    }
+    if (margin_pct !== undefined && margin_pct < DNA_MIN_MARGIN) {
+      dnaViolations.push(`Margin ${margin_pct}% < ${DNA_MIN_MARGIN}%`);
+    }
+    if (negative_space_pct !== undefined && negative_space_pct < DNA_MIN_SPACE) {
+      dnaViolations.push(`Negative space ${negative_space_pct}% < ${DNA_MIN_SPACE}%`);
+    }
+    if (dnaViolations.length > 0) {
+      console.log("DNA BLOCKED mockup:", dnaViolations);
+      return new Response(JSON.stringify({
+        status: "blocked_by_dna",
+        message: "DNA BLOCKED: " + dnaViolations.join(" | "),
+        violated_rules: dnaViolations,
+      }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const isProduction = production === true;
