@@ -159,15 +159,16 @@ Be thorough and specific. Return valid JSON only.`;
       };
     }
 
-    // --- Merge strategy: upsert by user_id, preserve existing palette ---
+    // --- Merge strategy: upsert by user_id, preserve existing palette & rules_locked ---
     const { data: existingRow } = await adminClient
       .from("brand_rules")
-      .select("palette, rules")
+      .select("palette, rules, forbidden_keywords, typography, rules_locked")
       .eq("user_id", user.id)
       .maybeSingle();
 
     const existingPalette = existingRow?.palette;
     const hasExistingPalette = Array.isArray(existingPalette) && existingPalette.length > 0;
+    const rulesLocked = existingRow?.rules_locked === true;
 
     // Deep-merge rules: keep existing + append new unique ones
     let mergedRules = extracted!.rules || FALLBACK_RULES;
@@ -196,6 +197,7 @@ Be thorough and specific. Return valid JSON only.`;
       forbidden_keywords: extracted!.forbidden_keywords || FALLBACK_FORBIDDEN,
       typography: extracted!.typography || [],
       raw_summary: rawSummary,
+      rules_locked: rulesLocked,
     }, { onConflict: "user_id" });
 
     if (upsertError) {
@@ -204,7 +206,9 @@ Be thorough and specific. Return valid JSON only.`;
         ok: false,
         reason: `DB upsert failed: ${upsertError.message}`,
         fallbackUsed,
-        details: null,
+        saved: false,
+        rulesLocked,
+        ruleCount: 0,
       });
     }
 
@@ -213,9 +217,8 @@ Be thorough and specific. Return valid JSON only.`;
       fallbackUsed,
       reason: fallbackUsed ? reason : undefined,
       saved: true,
-      userId: user.id,
-      brandFileId,
-      extracted,
+      rulesLocked,
+      ruleCount: Array.isArray(mergedRules) ? mergedRules.length : 0,
     });
   } catch (e) {
     // Absolute last-resort catch — still 200
