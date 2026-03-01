@@ -1,16 +1,8 @@
 /**
- * Client-side mockup compositor using Canvas API.
- * Draws garment flatlay templates with overlay text/design + CONCEPT ONLY watermark.
- * NO AI, NO Leonardo — fully deterministic.
+ * Client-side mockup compositor using SVG data URLs.
+ * Draws garment flatlay templates with overlay text + CONCEPT ONLY watermark.
+ * NO Canvas, NO Image(), NO roundRect — fully deterministic SVG.
  */
-
-const BRAND_PALETTE = {
-  sable: "#CBBFA9",
-  brume: "#E7E4DE",
-  navy: "#0B1B2B",
-  creme: "#F7F2E8",
-  lavande: "#C9C3D6",
-};
 
 type GarmentType = "tee" | "crewneck" | "hoodie" | "cap";
 type Placement = "center" | "left_chest";
@@ -24,34 +16,12 @@ interface ComposeMockupOptions {
   designImageUrl?: string | null;
 }
 
-const PRINT_AREAS: Record<GarmentType, Record<Placement, { x: number; y: number; w: number; h: number }>> = {
-  tee: {
-    center: { x: 250, y: 300, w: 300, h: 300 },
-    left_chest: { x: 220, y: 250, w: 120, h: 120 },
-  },
-  crewneck: {
-    center: { x: 240, y: 320, w: 320, h: 280 },
-    left_chest: { x: 210, y: 270, w: 130, h: 130 },
-  },
-  hoodie: {
-    center: { x: 230, y: 340, w: 340, h: 280 },
-    left_chest: { x: 200, y: 290, w: 130, h: 130 },
-  },
-  cap: {
-    center: { x: 250, y: 280, w: 300, h: 200 },
-    left_chest: { x: 280, y: 300, w: 140, h: 140 },
-  },
-};
+function escapeXml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
 
-/** Safe roundRect that works on all browsers including mobile */
-function safeRoundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
+function truncate(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max) + "…" : s;
 }
 
 function getGarmentForSku(skuType: "quiet" | "funny" | "hero", index: number): GarmentType {
@@ -60,276 +30,74 @@ function getGarmentForSku(skuType: "quiet" | "funny" | "hero", index: number): G
   return garments[index % garments.length];
 }
 
-function drawGarmentSilhouette(ctx: CanvasRenderingContext2D, garment: GarmentType, color: string) {
-  ctx.fillStyle = color;
-  ctx.strokeStyle = BRAND_PALETTE.navy;
-  ctx.lineWidth = 2;
-
-  switch (garment) {
-    case "tee":
-      ctx.beginPath();
-      ctx.moveTo(280, 140);
-      ctx.lineTo(200, 180);
-      ctx.lineTo(140, 350);
-      ctx.lineTo(200, 350);
-      ctx.lineTo(220, 260);
-      ctx.lineTo(220, 780);
-      ctx.lineTo(580, 780);
-      ctx.lineTo(580, 260);
-      ctx.lineTo(600, 350);
-      ctx.lineTo(660, 350);
-      ctx.lineTo(600, 180);
-      ctx.lineTo(520, 140);
-      ctx.quadraticCurveTo(400, 110, 280, 140);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      break;
-
-    case "crewneck":
-      ctx.beginPath();
-      ctx.moveTo(290, 150);
-      ctx.lineTo(180, 200);
-      ctx.lineTo(100, 400);
-      ctx.lineTo(170, 410);
-      ctx.lineTo(210, 280);
-      ctx.lineTo(210, 800);
-      ctx.lineTo(590, 800);
-      ctx.lineTo(590, 280);
-      ctx.lineTo(630, 410);
-      ctx.lineTo(700, 400);
-      ctx.lineTo(620, 200);
-      ctx.lineTo(510, 150);
-      ctx.quadraticCurveTo(400, 125, 290, 150);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      ctx.strokeStyle = BRAND_PALETTE.sable;
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(210, 770); ctx.lineTo(590, 770);
-      ctx.stroke();
-      break;
-
-    case "hoodie":
-      ctx.beginPath();
-      ctx.moveTo(300, 130);
-      ctx.lineTo(170, 190);
-      ctx.lineTo(80, 420);
-      ctx.lineTo(160, 430);
-      ctx.lineTo(200, 290);
-      ctx.lineTo(200, 820);
-      ctx.lineTo(600, 820);
-      ctx.lineTo(600, 290);
-      ctx.lineTo(640, 430);
-      ctx.lineTo(720, 420);
-      ctx.lineTo(630, 190);
-      ctx.lineTo(500, 130);
-      ctx.quadraticCurveTo(400, 100, 300, 130);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      // Hood
-      ctx.beginPath();
-      ctx.strokeStyle = BRAND_PALETTE.navy;
-      ctx.lineWidth = 2;
-      ctx.moveTo(300, 130);
-      ctx.quadraticCurveTo(250, 50, 330, 40);
-      ctx.quadraticCurveTo(400, 30, 470, 40);
-      ctx.quadraticCurveTo(550, 50, 500, 130);
-      ctx.stroke();
-      // Kangaroo pocket — using safeRoundRect
-      ctx.strokeStyle = BRAND_PALETTE.sable;
-      ctx.lineWidth = 1.5;
-      safeRoundRect(ctx, 280, 550, 240, 120, 10);
-      ctx.stroke();
-      break;
-
-    case "cap":
-      ctx.beginPath();
-      ctx.ellipse(400, 400, 220, 180, 0, Math.PI, 0);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.ellipse(400, 400, 260, 40, 0, 0, Math.PI);
-      ctx.closePath();
-      ctx.fillStyle = darkenColor(color, 15);
-      ctx.fill();
-      ctx.strokeStyle = BRAND_PALETTE.navy;
-      ctx.stroke();
-      break;
-  }
-}
-
-function darkenColor(hex: string, pct: number): string {
-  const num = parseInt(hex.replace("#", ""), 16);
-  const r = Math.max(0, (num >> 16) - Math.round(255 * pct / 100));
-  const g = Math.max(0, ((num >> 8) & 0xff) - Math.round(255 * pct / 100));
-  const b = Math.max(0, (num & 0xff) - Math.round(255 * pct / 100));
-  return `#${(r << 16 | g << 8 | b).toString(16).padStart(6, "0")}`;
-}
-
-function getPaletteColor(palette: string[], index: number): string {
-  const colorMap: Record<string, string> = BRAND_PALETTE;
-  const key = palette[index % palette.length];
-  return colorMap[key] || BRAND_PALETTE.creme;
-}
-
-function drawOverlayBadge(
-  ctx: CanvasRenderingContext2D,
-  area: { x: number; y: number; w: number; h: number },
-  skuName: string,
-  skuType: "quiet" | "funny" | "hero",
-  palette: string[],
-) {
-  const cx = area.x + area.w / 2;
-  const cy = area.y + area.h / 2;
-
-  if (skuType === "quiet") {
-    const baseColor = getPaletteColor(palette, 0);
-    for (let i = 3; i >= 0; i--) {
-      ctx.beginPath();
-      ctx.arc(cx, cy, 20 + i * 22, 0, Math.PI * 2);
-      ctx.strokeStyle = baseColor;
-      ctx.lineWidth = 2;
-      ctx.globalAlpha = 0.3 + i * 0.15;
-      ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
-    ctx.font = "bold 14px 'Inter', sans-serif";
-    ctx.fillStyle = BRAND_PALETTE.navy;
-    ctx.textAlign = "center";
-    ctx.fillText(skuName.split(" ").slice(0, 2).join(" "), cx, cy + area.h / 2 + 20);
-  } else if (skuType === "funny") {
-    ctx.save();
-    ctx.fillStyle = BRAND_PALETTE.navy;
-    ctx.globalAlpha = 0.9;
-    safeRoundRect(ctx, area.x + 10, area.y + 10, area.w - 20, area.h - 20, 8);
-    ctx.fill();
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = BRAND_PALETTE.creme;
-    ctx.font = "bold 16px 'Inter', sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    const words = skuName.split(" ");
-    const lineHeight = 22;
-    const startY = cy - ((words.length > 3 ? 2 : words.length - 1) * lineHeight) / 2;
-    let line = "";
-    let lineNum = 0;
-    for (const word of words) {
-      const test = line ? `${line} ${word}` : word;
-      if (ctx.measureText(test).width > area.w - 40) {
-        ctx.fillText(line, cx, startY + lineNum * lineHeight);
-        line = word;
-        lineNum++;
-      } else {
-        line = test;
-      }
-    }
-    if (line) ctx.fillText(line, cx, startY + lineNum * lineHeight);
-    ctx.restore();
-  } else {
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, Math.min(area.w, area.h) / 2 - 10, 0, Math.PI * 2);
-    ctx.fillStyle = BRAND_PALETTE.navy;
-    ctx.fill();
-    ctx.strokeStyle = BRAND_PALETTE.sable;
-    ctx.lineWidth = 3;
-    ctx.stroke();
-    ctx.fillStyle = BRAND_PALETTE.creme;
-    ctx.font = "bold 11px 'Inter', sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("ÉDITION", cx, cy - 12);
-    ctx.fillText("LIMITÉE", cx, cy + 4);
-    ctx.font = "10px 'Inter', sans-serif";
-    ctx.fillStyle = BRAND_PALETTE.sable;
-    ctx.fillText("×50", cx, cy + 22);
-    ctx.restore();
-  }
-}
-
-function drawWatermark(ctx: CanvasRenderingContext2D, width: number, height: number) {
-  ctx.save();
-  ctx.globalAlpha = 0.35;
-  ctx.fillStyle = BRAND_PALETTE.navy;
-  ctx.font = "bold 24px 'Inter', sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("CONCEPT ONLY", width / 2, height - 40);
-  ctx.globalAlpha = 0.06;
-  ctx.translate(width / 2, height / 2);
-  ctx.rotate(-Math.PI / 6);
-  ctx.font = "bold 60px 'Inter', sans-serif";
-  ctx.fillText("CONCEPT ONLY", 0, 0);
-  ctx.restore();
-}
-
 export async function composeMockup(options: ComposeMockupOptions): Promise<string> {
-  const { garment, skuName, skuType, placement, palette = ["sable", "navy", "creme"], designImageUrl } = options;
+  const { garment, skuName, skuType, placement } = options;
 
   const W = 800;
   const H = 1000;
+  const label = escapeXml(truncate(skuName, 18));
+  const garmentLabel = escapeXml(`${garment.toUpperCase()} · ${placement === "center" ? "Center" : "Left Chest"}`);
+  const typeLabel = escapeXml(skuType.toUpperCase());
 
-  const canvas = document.createElement("canvas");
-  canvas.width = W;
-  canvas.height = H;
-  const ctx = canvas.getContext("2d")!;
+  // Placement box coords
+  const pb = placement === "center"
+    ? { x: 250, y: 320, w: 300, h: 260 }
+    : { x: 240, y: 260, w: 160, h: 140 };
 
-  // Background
-  ctx.fillStyle = BRAND_PALETTE.creme;
-  ctx.fillRect(0, 0, W, H);
+  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  <!-- Background -->
+  <rect width="${W}" height="${H}" fill="#F7F2E8"/>
+  <!-- Grid -->
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#E7E4DE" stroke-width="0.5"/>
+    </pattern>
+  </defs>
+  <rect width="${W}" height="${H}" fill="url(#grid)"/>
+  <!-- Garment silhouette -->
+  <rect x="170" y="140" width="460" height="680" rx="22" ry="22"
+        fill="#E7E4DE" stroke="#0B1B2B" stroke-width="2"/>
+  <!-- Placement box -->
+  <rect x="${pb.x}" y="${pb.y}" width="${pb.w}" height="${pb.h}" rx="6" ry="6"
+        fill="#0B1B2B" fill-opacity="0.08" stroke="#0B1B2B" stroke-width="1.5" stroke-dasharray="6 3"/>
+  <!-- SKU name in placement box -->
+  <text x="${pb.x + pb.w / 2}" y="${pb.y + pb.h / 2 - 8}"
+        text-anchor="middle" dominant-baseline="middle"
+        font-family="Inter, sans-serif" font-size="16" font-weight="bold" fill="#0B1B2B">
+    ${label}
+  </text>
+  <!-- Type badge -->
+  <text x="${pb.x + pb.w / 2}" y="${pb.y + pb.h / 2 + 16}"
+        text-anchor="middle" dominant-baseline="middle"
+        font-family="Inter, sans-serif" font-size="11" fill="#CBBFA9">
+    ${typeLabel}
+  </text>
+  <!-- Placement label -->
+  <text x="${pb.x + pb.w / 2}" y="${pb.y + pb.h + 22}"
+        text-anchor="middle" font-family="Inter, sans-serif" font-size="10" fill="#0B1B2B" fill-opacity="0.5">
+    ${placement === "center" ? "▣ CENTER" : "◧ LEFT CHEST"}
+  </text>
+  <!-- Garment info label -->
+  <text x="20" y="${H - 60}"
+        font-family="Inter, sans-serif" font-size="11" fill="#0B1B2B" fill-opacity="0.7">
+    ${garmentLabel}
+  </text>
+  <!-- Watermark bottom -->
+  <text x="${W / 2}" y="${H - 40}"
+        text-anchor="middle" font-family="Inter, sans-serif" font-size="24" font-weight="bold"
+        fill="#0B1B2B" fill-opacity="0.35">
+    CONCEPT ONLY
+  </text>
+  <!-- Watermark diagonal -->
+  <text x="${W / 2}" y="${H / 2}"
+        text-anchor="middle" font-family="Inter, sans-serif" font-size="60" font-weight="bold"
+        fill="#0B1B2B" fill-opacity="0.06"
+        transform="rotate(-30 ${W / 2} ${H / 2})">
+    CONCEPT ONLY
+  </text>
+</svg>`;
 
-  // Subtle grid
-  ctx.strokeStyle = BRAND_PALETTE.brume;
-  ctx.lineWidth = 0.5;
-  for (let x = 0; x < W; x += 40) {
-    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
-  }
-  for (let y = 0; y < H; y += 40) {
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-  }
-
-  // Garment
-  const garmentColor = getPaletteColor(palette, 1) === BRAND_PALETTE.navy
-    ? BRAND_PALETTE.brume
-    : getPaletteColor(palette, 1);
-  drawGarmentSilhouette(ctx, garment, garmentColor);
-
-  // Print area
-  const area = PRINT_AREAS[garment][placement];
-
-  if (designImageUrl) {
-    try {
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      await new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = () => reject(new Error("Image load failed"));
-        img.src = designImageUrl;
-      });
-      ctx.drawImage(img, area.x, area.y, area.w, area.h);
-    } catch {
-      drawOverlayBadge(ctx, area, skuName, skuType, palette);
-    }
-  } else {
-    drawOverlayBadge(ctx, area, skuName, skuType, palette);
-  }
-
-  // Label
-  ctx.fillStyle = BRAND_PALETTE.navy;
-  ctx.globalAlpha = 0.7;
-  ctx.font = "11px 'Inter', sans-serif";
-  ctx.textAlign = "left";
-  ctx.fillText(`${garment.toUpperCase()} · ${placement === "center" ? "Center" : "Left Chest"}`, 20, H - 60);
-  ctx.globalAlpha = 1;
-
-  // Watermark
-  drawWatermark(ctx, W, H);
-
-  return canvas.toDataURL("image/png");
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svgString)}`;
 }
 
 export function getGarmentType(skuType: "quiet" | "funny" | "hero", skuIndex: number): GarmentType {

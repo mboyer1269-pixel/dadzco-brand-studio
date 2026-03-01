@@ -309,13 +309,16 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
       )}
 
       {/* Permanent debug badge */}
-      <div className="rounded-md border border-border bg-muted/30 px-3 py-1.5 flex items-center gap-4 text-[11px] font-mono text-muted-foreground">
-        <span>Debug:</span>
-        <span>logs={debugLog.length}</span>
-        <span>errors={Object.keys(skuErrors).length}</span>
-        <span>gen={generationCounter}</span>
-        <span>variants={variants.length}</span>
-        <span>generating={String(isGenerating)}</span>
+      <div className="rounded-md border border-border bg-muted/30 px-3 py-1.5 flex flex-col gap-1 text-[11px] font-mono text-muted-foreground">
+        <div className="flex items-center gap-4">
+          <span>Debug:</span>
+          <span>logs={debugLog.length}</span>
+          <span>errors={Object.keys(skuErrors).length}</span>
+          <span>gen={generationCounter}</span>
+          <span>variants={variants.length}</span>
+          <span>generating={String(isGenerating)}</span>
+        </div>
+        <div>Last action: {debugLog[0] || "none"}</div>
       </div>
 
       {/* SKU Grid */}
@@ -326,19 +329,24 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
           return (
             <Card key={sku.id} className="border-border overflow-hidden">
               <CardContent className="p-0">
-                <div className="aspect-[4/5] bg-muted rounded-t-lg flex items-center justify-center relative">
+                <div className="aspect-[4/5] bg-muted rounded-t-lg flex items-center justify-center relative overflow-hidden">
                   {image ? (
                     <img
                       src={image}
                       alt={`${sku.name} - Variant ${selectedVariant}`}
-                      className="w-full h-full object-cover rounded-t-lg"
+                      className="w-full h-full object-contain rounded-t-lg"
                     />
                   ) : (
                     <div className="text-center p-6">
                       <ImageIcon className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
                       <p className="text-xs text-muted-foreground font-body mb-2">
-                        No mockup yet
+                        {sku.name}
                       </p>
+                      {errorMsg && (
+                        <p className="text-[10px] text-destructive font-body mb-2 break-words">
+                          {errorMsg.length > 120 ? `${errorMsg.slice(0, 120)}…` : errorMsg}
+                        </p>
+                      )}
                       <Button
                         size="sm"
                         variant="outline"
