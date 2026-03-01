@@ -2,7 +2,7 @@ import { useState, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Download, Save, Image as ImageIcon, Wand2, CheckCircle2, RotateCcw } from "lucide-react";
+import { Download, Save, Image as ImageIcon, Wand2, CheckCircle2, RotateCcw, Loader2 } from "lucide-react";
 import type { WizardSKU } from "@/lib/collection-types";
 import { formatCAD } from "@/lib/pricing";
 import { composeMockup, getGarmentType, type Placement } from "@/lib/compose-mockup";
@@ -27,8 +27,11 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
   const [variants, setVariants] = useState<PrevizVariant[]>([]);
   const [variationsGenerated, setVariationsGenerated] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generatingLabel, setGeneratingLabel] = useState<"A" | "B" | "ALL" | null>(null);
   const [selectedVariant, setSelectedVariant] = useState<"A" | "B">("A");
   const [approvedVariant, setApprovedVariant] = useState<"A" | "B" | null>(null);
+  const [lastGeneratedAt, setLastGeneratedAt] = useState<string | null>(null);
+  const [generationCounter, setGenerationCounter] = useState(0);
 
   const totalRetail = skus.reduce((s, k) => s + k.retailPrice, 0);
   const avgMargin = skus.length > 0 ? skus.reduce((s, k) => s + k.marginPct, 0) / skus.length : 0;
@@ -37,7 +40,6 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
   const heroCount = skus.filter((s) => s.type === "hero").length;
 
   const generateVariant = useCallback(async (variantLabel: "A" | "B") => {
-    setIsGenerating(true);
     const placement: Placement = variantLabel === "A" ? "center" : "left_chest";
     const newVariants: PrevizVariant[] = [];
 
@@ -59,23 +61,34 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
       ...prev.filter((v) => v.variant !== variantLabel),
       ...newVariants,
     ]);
-    setIsGenerating(false);
+    const now = new Date().toLocaleTimeString();
+    setLastGeneratedAt(now);
+    setGenerationCounter((c) => c + 1);
   }, [skus]);
 
   const handleRequestVariation = useCallback(async () => {
-    if (variationsGenerated >= 2) return;
+    if (variationsGenerated >= 2 || isGenerating) return;
     const nextVariant: "A" | "B" = variationsGenerated === 0 ? "A" : "B";
+    setIsGenerating(true);
+    setGeneratingLabel(nextVariant);
     await generateVariant(nextVariant);
     setVariationsGenerated((v) => v + 1);
     setSelectedVariant(nextVariant);
-  }, [variationsGenerated, generateVariant]);
+    setIsGenerating(false);
+    setGeneratingLabel(null);
+  }, [variationsGenerated, isGenerating, generateVariant]);
 
   const handleGenerateAll = useCallback(async () => {
+    if (isGenerating) return;
+    setIsGenerating(true);
+    setGeneratingLabel("ALL");
     await generateVariant("A");
     await generateVariant("B");
     setVariationsGenerated(2);
     setSelectedVariant("A");
-  }, [generateVariant]);
+    setIsGenerating(false);
+    setGeneratingLabel(null);
+  }, [isGenerating, generateVariant]);
 
   const handleApprove = useCallback((variant: "A" | "B") => {
     setApprovedVariant(variant);
@@ -92,7 +105,7 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h2 className="font-display text-2xl font-light text-foreground tracking-wide">
             Previz & Review
@@ -101,7 +114,7 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
             Generate concept mockups, compare variants, then approve
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           {!hasAnyVariants && (
             <Button
               onClick={handleGenerateAll}
@@ -109,7 +122,11 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
               variant="outline"
               className="font-body text-xs tracking-wider uppercase"
             >
-              <Wand2 className="h-4 w-4 mr-2" />
+              {isGenerating ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Wand2 className="h-4 w-4 mr-2" />
+              )}
               {isGenerating ? "Generating…" : "Generate Previz"}
             </Button>
           )}
@@ -119,7 +136,11 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
             variant="outline"
             className="font-body text-xs tracking-wider uppercase"
           >
-            <RotateCcw className="h-4 w-4 mr-2" />
+            {isGenerating ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <RotateCcw className="h-4 w-4 mr-2" />
+            )}
             {isGenerating ? "Generating…" : `Request Variation (${variationsGenerated}/2)`}
           </Button>
           <Button
@@ -174,7 +195,7 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
 
       {/* Variant Selector */}
       {hasAnyVariants && (
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <span className="text-xs font-body uppercase tracking-wider text-muted-foreground">Viewing:</span>
           <div className="flex gap-2">
             <Button
@@ -185,7 +206,7 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
               className="font-body text-xs"
             >
               Variant A · Center
-              {approvedVariant === "A" && <CheckCircle2 className="h-3 w-3 ml-1 text-green-400" />}
+              {approvedVariant === "A" && <CheckCircle2 className="h-3 w-3 ml-1" />}
             </Button>
             <Button
               variant={selectedVariant === "B" ? "default" : "outline"}
@@ -195,7 +216,7 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
               className="font-body text-xs"
             >
               Variant B · Left Chest
-              {approvedVariant === "B" && <CheckCircle2 className="h-3 w-3 ml-1 text-green-400" />}
+              {approvedVariant === "B" && <CheckCircle2 className="h-3 w-3 ml-1" />}
             </Button>
           </div>
           {hasVariantA && hasVariantB && !approvedVariant && (
@@ -205,7 +226,7 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
                 size="sm"
                 variant="outline"
                 onClick={() => handleApprove("A")}
-                className="font-body text-xs border-green-500/30 hover:bg-green-500/10"
+                className="font-body text-xs"
               >
                 <CheckCircle2 className="h-3 w-3 mr-1" /> Approve A
               </Button>
@@ -213,7 +234,7 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
                 size="sm"
                 variant="outline"
                 onClick={() => handleApprove("B")}
-                className="font-body text-xs border-green-500/30 hover:bg-green-500/10"
+                className="font-body text-xs"
               >
                 <CheckCircle2 className="h-3 w-3 mr-1" /> Approve B
               </Button>
@@ -224,6 +245,16 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
               ✓ Direction {approvedVariant} approved
             </Badge>
           )}
+        </div>
+      )}
+
+      {/* Generation overlay */}
+      {isGenerating && (
+        <div className="rounded-lg border border-border bg-muted/50 p-4 flex items-center gap-3">
+          <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          <span className="text-sm font-body text-foreground">
+            Generating {generatingLabel === "ALL" ? "Variant A & B" : `Variant ${generatingLabel}`} for {skus.length} SKUs…
+          </span>
         </div>
       )}
 
@@ -244,14 +275,24 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
                   ) : (
                     <div className="text-center p-6">
                       <ImageIcon className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
-                      <p className="text-xs text-muted-foreground font-body">
-                        Click "Generate Previz" or<br />"Request Variation" to create mockups
+                      <p className="text-xs text-muted-foreground font-body mb-2">
+                        No mockup yet
                       </p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={hasAnyVariants ? handleRequestVariation : handleGenerateAll}
+                        disabled={isGenerating || variationsGenerated >= 2}
+                        className="font-body text-[10px]"
+                      >
+                        <Wand2 className="h-3 w-3 mr-1" />
+                        Generate
+                      </Button>
                     </div>
                   )}
                 </div>
                 <div className="p-4">
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
                     <Badge variant={sku.type === "quiet" ? "secondary" : sku.type === "hero" ? "default" : "outline"} className="text-[9px] font-body uppercase">
                       {sku.type}
                     </Badge>
@@ -271,6 +312,12 @@ export function WizardStepPreview({ name, season, skus, onSave, isSaving, onAppr
                       {sku.marginPct.toFixed(1)}% margin
                     </span>
                   </div>
+                  {/* Debug info */}
+                  {image && lastGeneratedAt && (
+                    <p className="text-[9px] text-muted-foreground font-body mt-1.5">
+                      Gen #{generationCounter} · Variant {selectedVariant} · {lastGeneratedAt}
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>
