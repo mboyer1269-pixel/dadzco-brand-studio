@@ -225,10 +225,26 @@ export default function BrandBook() {
         },
       });
       if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+
+      // The edge function always returns 200 now
+      const isOk = data?.ok === true;
+      const usedFallback = data?.fallbackUsed === true;
 
       stopProgressSimulation(true);
-      toast.success(`Règles extraites de "${file.file_name}" avec succès !`);
+
+      if (isOk) {
+        toast.success(`Règles extraites de "${file.file_name}" avec succès !`);
+      } else if (usedFallback) {
+        toast.success(`Règles extraites (fallback) de "${file.file_name}".`, {
+          description: data?.reason || "L'IA n'a pas pu analyser le fichier. Règles par défaut appliquées.",
+        });
+      } else {
+        toast.error(data?.reason || "Erreur lors de l'extraction.");
+        setFailedFileId(file.id);
+        await fetchExtractedRules();
+        return;
+      }
+      setFailedFileId(null);
       await fetchExtractedRules();
     } catch (e: any) {
       console.error("Extraction error:", e);
@@ -466,12 +482,17 @@ export default function BrandBook() {
                     )}
                     <span className="text-xs font-body font-medium">ADN Status</span>
                   </div>
-                  <Badge
-                    variant={extracting ? "outline" : failedFileId ? "destructive" : dnaLocked ? "default" : "destructive"}
-                    className={`text-[9px] ${extracting ? "border-accent/50 text-accent" : ""}`}
-                  >
-                    {extracting ? "EXTRACTION IA…" : failedFileId ? "ÉCHEC" : dnaLocked ? "VERROUILLÉ IA" : "EN ATTENTE"}
-                  </Badge>
+                  {(() => {
+                    const hasFallback = extractedRules.some((r: any) => r.raw_summary?.startsWith("fallbackUsed:true"));
+                    const hasRules = extractedRules.length > 0;
+                    if (extracting) return <Badge variant="outline" className="text-[9px] border-accent/50 text-accent">EXTRACTION IA…</Badge>;
+                    if (failedFileId && !hasRules) return <Badge variant="destructive" className="text-[9px]">ÉCHEC</Badge>;
+                    if (dnaLocked && hasFallback) return <Badge variant="default" className="text-[9px] bg-amber-500/80">VERROUILLÉ (FALLBACK)</Badge>;
+                    if (dnaLocked) return <Badge variant="default" className="text-[9px]">VERROUILLÉ IA</Badge>;
+                    if (hasFallback) return <Badge variant="outline" className="text-[9px] border-amber-500/50 text-amber-600">EXTRAIT (FALLBACK)</Badge>;
+                    if (hasRules) return <Badge variant="outline" className="text-[9px] border-accent/50 text-accent">EXTRAIT</Badge>;
+                    return <Badge variant="destructive" className="text-[9px]">EN ATTENTE</Badge>;
+                  })()}
                 </div>
                 <Progress
                   value={extracting ? extractionProgress : failedFileId ? 0 : dnaLocked ? 100 : 20}

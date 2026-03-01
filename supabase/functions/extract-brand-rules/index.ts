@@ -7,16 +7,46 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const FALLBACK_RULES = [
+  { rule: "Matching ≠ identical", category: "general", priority: "critical" },
+  { rule: "Parents wearable-alone", category: "visual", priority: "critical" },
+  { rule: "Kids narrative", category: "tone", priority: "important" },
+  { rule: "Anti-kitsch", category: "visual", priority: "critical" },
+  { rule: "Margin>=55", category: "general", priority: "critical" },
+];
+
+const FALLBACK_FORBIDDEN = [
+  "cartoon", "cute", "childish", "kawaii", "comic", "clipart", "mignon", "enfantin",
+];
+
+const FALLBACK_PALETTE = [
+  { name: "Sable", hex: "#C2B280", usage: "primary" },
+  { name: "Brume", hex: "#B0C4DE", usage: "secondary" },
+  { name: "Navy", hex: "#1B2A4A", usage: "accent" },
+  { name: "Crème", hex: "#FFFDD0", usage: "background" },
+  { name: "Lavande", hex: "#B57EDC", usage: "highlight" },
+];
+
+function ok200(body: Record<string, unknown>) {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  // Everything wrapped — we NEVER return non-2xx
   try {
     const authHeader = req.headers.get("Authorization");
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
 
-    if (!lovableApiKey) throw new Error("LOVABLE_API_KEY is not configured");
+    if (!lovableApiKey) {
+      return ok200({ ok: false, reason: "LOVABLE_API_KEY not configured", fallbackUsed: false, details: null });
+    }
 
     // Auth check
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -25,220 +55,174 @@ serve(async (req) => {
     });
     const { data: { user }, error: authError } = await userClient.auth.getUser();
     if (authError || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return ok200({ ok: false, reason: "Unauthorized – sign in with email first", fallbackUsed: false, details: null });
     }
 
     const { brandFileId, storagePath, fileName } = await req.json();
     if (!brandFileId || !storagePath) {
-      return new Response(JSON.stringify({ error: "Missing brandFileId or storagePath" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return ok200({ ok: false, reason: "Missing brandFileId or storagePath", fallbackUsed: false, details: null });
     }
 
-    // Download file from storage
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
-    const { data: fileData, error: downloadError } = await adminClient.storage
-      .from("brand-book-files")
-      .download(storagePath);
 
-    if (downloadError || !fileData) {
-      console.error("Download error:", downloadError);
-      return new Response(JSON.stringify({ error: "Failed to download file" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    // --- Attempt AI extraction ---
+    let extracted: Record<string, unknown> | null = null;
+    let fallbackUsed = false;
+    let reason = "";
 
-    // Convert to base64 in chunks to avoid stack overflow on large files
-    const arrayBuffer = await fileData.arrayBuffer();
-    const bytes = new Uint8Array(arrayBuffer);
-    const CHUNK = 8192;
-    let binary = "";
-    for (let i = 0; i < bytes.length; i += CHUNK) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-    }
-    const base64 = btoa(binary);
+    try {
+      // Download file
+      const { data: fileData, error: downloadError } = await adminClient.storage
+        .from("brand-book-files")
+        .download(storagePath);
 
-    const isPdf = fileName?.toLowerCase().endsWith(".pdf");
-    const mimeType = isPdf ? "application/pdf" : fileData.type || "image/png";
+      if (downloadError || !fileData) throw new Error(`Download failed: ${downloadError?.message}`);
 
-    // Build the AI request with tool calling for structured output
-    const systemPrompt = `You are a brand identity expert. Analyze the uploaded brand book document or logo and extract structured brand rules.
-Focus on:
-- Visual identity rules (spacing, negative space, layout constraints)
-- Color palette (extract exact colors with names and hex values)
-- Typography rules (font families, weights, usage rules)
-- Forbidden elements or keywords (things the brand should never do/use)
-- Tone of voice guidelines
-- Logo usage rules
-Be thorough and specific. Extract real data from the document, not generic guidelines.`;
+      // Convert to base64
+      const arrayBuffer = await fileData.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      const CHUNK = 8192;
+      let binary = "";
+      for (let i = 0; i < bytes.length; i += CHUNK) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+      }
+      const base64 = btoa(binary);
+      const isPdf = fileName?.toLowerCase().endsWith(".pdf");
+      const mimeType = isPdf ? "application/pdf" : fileData.type || "image/png";
 
-    // Both PDFs and images use image_url with data URI — the AI gateway handles both
-    const aiPayload: any = {
-      model: "google/gemini-2.5-flash",
-      max_tokens: 800,
-      messages: [
-        { role: "system", content: systemPrompt },
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: `Analyze this brand document "${fileName}" and extract all brand rules, color palette, typography, and forbidden elements.`,
-            },
-            { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64}` } },
-          ],
-        },
-      ],
-      tools: [
-        {
-          type: "function",
-          function: {
-            name: "extract_brand_rules",
-            description: "Extract structured brand rules from a brand book document.",
-            parameters: {
-              type: "object",
-              properties: {
-                category: {
-                  type: "string",
-                  description: "Main brand category detected (e.g. quiet_luxury, premium, minimalist, bold)",
-                },
-                rules: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      rule: { type: "string", description: "The brand rule" },
-                      category: { type: "string", enum: ["visual", "tone", "layout", "logo", "general"] },
-                      priority: { type: "string", enum: ["critical", "important", "nice_to_have"] },
-                    },
-                    required: ["rule", "category", "priority"],
-                    additionalProperties: false,
-                  },
-                },
-                palette: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      name: { type: "string" },
-                      hex: { type: "string" },
-                      usage: { type: "string" },
-                    },
-                    required: ["name", "hex"],
-                    additionalProperties: false,
-                  },
-                },
-                typography: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      font: { type: "string" },
-                      weight: { type: "string" },
-                      usage: { type: "string" },
-                    },
-                    required: ["font"],
-                    additionalProperties: false,
-                  },
-                },
-                forbidden_keywords: {
-                  type: "array",
-                  items: { type: "string" },
-                  description: "Words, styles, or elements the brand must never use",
-                },
-                summary: {
-                  type: "string",
-                  description: "A 2-3 sentence summary of the brand identity",
-                },
+      const systemPrompt = `You are a brand identity expert. Analyze the uploaded brand book document or logo and extract structured brand rules.
+Focus on: visual identity rules, color palette (hex), typography, forbidden elements, tone of voice, logo usage rules.
+Be thorough and specific. Return valid JSON only.`;
+
+      const aiPayload = {
+        model: "google/gemini-2.5-flash",
+        max_tokens: 800,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `Analyze this brand document "${fileName}". Return JSON with keys: category (string), rules (array of {rule,category,priority}), palette (array of {name,hex,usage}), typography (array of {font,weight,usage}), forbidden_keywords (array of strings), summary (string).`,
               },
-              required: ["category", "rules", "palette", "forbidden_keywords", "summary"],
-              additionalProperties: false,
-            },
+              { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64}` } },
+            ],
           },
+        ],
+      };
+
+      const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${lovableApiKey}`,
+          "Content-Type": "application/json",
         },
-      ],
-      tool_choice: { type: "function", function: { name: "extract_brand_rules" } },
-    };
-
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${lovableApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(aiPayload),
-    });
-
-    if (!aiResponse.ok) {
-      const errText = await aiResponse.text();
-      console.error("AI gateway error:", aiResponse.status, errText);
-      if (aiResponse.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again later." }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (aiResponse.status === 402) {
-        return new Response(JSON.stringify({ error: "Payment required. Please add credits." }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      return new Response(JSON.stringify({ error: "AI extraction failed" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify(aiPayload),
       });
+
+      if (!aiResponse.ok) {
+        const errText = await aiResponse.text();
+        throw new Error(`AI gateway ${aiResponse.status}: ${errText.slice(0, 200)}`);
+      }
+
+      const aiResult = await aiResponse.json();
+
+      // Try tool_calls first, then message.content
+      let rawJson: string | null = null;
+      const toolCall = aiResult.choices?.[0]?.message?.tool_calls?.[0];
+      if (toolCall?.function?.arguments) {
+        rawJson = toolCall.function.arguments;
+      } else {
+        const content = aiResult.choices?.[0]?.message?.content || "";
+        // Strip markdown fences if present
+        rawJson = content.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
+      }
+
+      if (!rawJson) throw new Error("AI returned empty content");
+
+      extracted = JSON.parse(rawJson);
+      if (!extracted || typeof extracted !== "object") throw new Error("AI returned non-object JSON");
+    } catch (aiErr) {
+      // AI extraction failed — use fallback
+      fallbackUsed = true;
+      reason = aiErr instanceof Error ? aiErr.message : "Unknown AI error";
+      console.error("AI extraction failed, using fallback:", reason);
+      extracted = {
+        category: "general",
+        rules: FALLBACK_RULES,
+        palette: FALLBACK_PALETTE,
+        typography: [],
+        forbidden_keywords: FALLBACK_FORBIDDEN,
+        summary: `Fallback rules applied. AI error: ${reason}`,
+      };
     }
 
-    const aiResult = await aiResponse.json();
-    const toolCall = aiResult.choices?.[0]?.message?.tool_calls?.[0];
+    // --- Merge strategy: don't overwrite existing palette ---
+    const { data: existingRules } = await adminClient
+      .from("brand_rules")
+      .select("palette, rules")
+      .eq("brand_file_id", brandFileId)
+      .maybeSingle();
 
-    if (!toolCall?.function?.arguments) {
-      console.error("No tool call in AI response:", JSON.stringify(aiResult));
-      return new Response(JSON.stringify({ error: "AI did not return structured rules" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const existingPalette = existingRules?.palette;
+    const hasExistingPalette = Array.isArray(existingPalette) && existingPalette.length > 0;
+
+    // Deep-merge rules: keep existing + add new unique ones
+    let mergedRules = extracted!.rules || FALLBACK_RULES;
+    if (Array.isArray(existingRules?.rules) && existingRules.rules.length > 0) {
+      const existingRuleTexts = new Set(
+        (existingRules.rules as Array<{ rule: string }>).map((r) => r.rule)
+      );
+      const newRules = (mergedRules as Array<{ rule: string }>).filter(
+        (r) => !existingRuleTexts.has(r.rule)
+      );
+      mergedRules = [...existingRules.rules, ...newRules];
     }
 
-    const extracted = JSON.parse(toolCall.function.arguments);
+    const finalPalette = hasExistingPalette ? existingPalette : (extracted!.palette || FALLBACK_PALETTE);
 
-    // Upsert into brand_rules
-    // Delete old rules for this file first
+    // Delete old rules for this file, then insert
     await adminClient.from("brand_rules").delete().eq("brand_file_id", brandFileId);
 
     const { error: insertError } = await adminClient.from("brand_rules").insert({
       user_id: user.id,
       brand_file_id: brandFileId,
-      category: extracted.category || "general",
-      rules: extracted.rules || [],
-      palette: extracted.palette || [],
-      forbidden_keywords: extracted.forbidden_keywords || [],
-      typography: extracted.typography || [],
-      raw_summary: extracted.summary || null,
+      category: (extracted!.category as string) || "general",
+      rules: mergedRules,
+      palette: finalPalette,
+      forbidden_keywords: extracted!.forbidden_keywords || FALLBACK_FORBIDDEN,
+      typography: extracted!.typography || [],
+      raw_summary: fallbackUsed
+        ? `fallbackUsed:true;${reason}`
+        : (extracted!.summary as string) || null,
     });
 
     if (insertError) {
       console.error("Insert error:", insertError);
-      return new Response(JSON.stringify({ error: "Failed to save extracted rules" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      return ok200({
+        ok: false,
+        reason: `DB insert failed: ${insertError.message}`,
+        fallbackUsed,
+        details: null,
       });
     }
 
-    return new Response(JSON.stringify({ success: true, extracted }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    return ok200({
+      ok: !fallbackUsed,
+      fallbackUsed,
+      reason: fallbackUsed ? reason : undefined,
+      extracted,
     });
   } catch (e) {
-    console.error("extract-brand-rules error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    // Absolute last-resort catch — still 200
+    console.error("extract-brand-rules fatal:", e);
+    return ok200({
+      ok: false,
+      reason: e instanceof Error ? e.message : "Unknown error",
+      fallbackUsed: true,
+      details: null,
     });
   }
 });
