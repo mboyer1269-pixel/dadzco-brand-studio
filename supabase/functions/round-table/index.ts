@@ -226,7 +226,19 @@ function validateAndEnforce(data: Record<string, unknown>): Record<string, unkno
     const violations: string[] = [];
     const fixes: string[] = [];
 
-    for (const sku of (c.skus as Record<string, unknown>[])) {
+    for (let skuIdx = 0; skuIdx < (c.skus as Record<string, unknown>[]).length; skuIdx++) {
+      const sku = (c.skus as Record<string, unknown>[])[skuIdx];
+      // Enforce SKU name
+      if (!sku.sku_name || String(sku.sku_name).trim() === "") {
+        sku.sku_name = `SKU-${skuIdx + 1}`;
+        fixes.push(`Set default name for SKU index ${skuIdx}`);
+      }
+      // Enforce mockup_brief
+      if (!sku.mockup_brief || String(sku.mockup_brief).trim() === "") {
+        sku.mockup_brief = `Minimal premium design concept for ${sku.sku_name}. Aviation & Wonders DNA. No cartoons. 70% negative space.`;
+        fixes.push(`Set default mockup_brief for ${sku.sku_name}`);
+      }
+
       const pricing = sku.pricing as Record<string, unknown> | undefined;
       const audience = String(sku.audience || "");
       const category = String(sku.category || "");

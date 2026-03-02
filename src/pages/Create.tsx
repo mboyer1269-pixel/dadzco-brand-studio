@@ -111,11 +111,56 @@ export default function Create() {
       const col = data?.collections?.[0];
       if (!col) throw new Error("No collection returned");
 
+      // ── Normalize collection fields ──
+      const colName = col.name || theme || "Aviation & Wonders — Founder Drop";
+      const colTheme = col.theme || theme || "Aviation & Wonders";
+      const rawSkus: any[] = Array.isArray(col.skus) ? col.skus.slice(0, 6) : [];
+
+      // Normalize each SKU
+      const normalizedSkus: ConceptSKU[] = rawSkus
+        .map((sku: any, idx: number) => {
+          const name = (typeof sku.sku_name === "string" && sku.sku_name.trim())
+            ? sku.sku_name.trim()
+            : (typeof sku.name === "string" && sku.name.trim())
+            ? sku.name.trim()
+            : `${sku.category || sku.product_type || "SKU"} ${idx + 1}`;
+
+          const mockup_brief = (typeof sku.mockup_brief === "string" && sku.mockup_brief.trim())
+            ? sku.mockup_brief.trim()
+            : (typeof sku.design_prompt === "string" && sku.design_prompt.trim())
+            ? sku.design_prompt.trim()
+            : `Minimal premium design concept for ${name}. Aviation & Wonders DNA. No cartoons. 70% negative space. Parent minimal. Kids narrative AOP.`;
+
+          const provider = sku.provider === "kin_custom" ? "kin_custom" : "printful";
+          const print_type = sku.print_type || (provider === "kin_custom" ? "AOP" : "DTG");
+
+          return {
+            name,
+            type: (sku.audience === "kid" ? "funny" : "quiet") as "quiet" | "funny",
+            products: [sku.category || "tee"],
+            placement: sku.design_direction || "center",
+            margin_target: sku.pricing?.margin_pct ?? 55,
+            mockup_brief,
+            provider,
+            print_type,
+          };
+        })
+        .filter((s) => s.name.length > 0);
+
+      if (normalizedSkus.length === 0) {
+        toast({
+          title: "Round Table returned invalid SKUs",
+          description: "No valid SKUs could be extracted. Try again with a clearer idea.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       setConcept({
-        name: col.name,
-        theme: col.theme,
+        name: colName,
+        theme: colTheme,
         palette: (col.palette || []).slice(0, 3),
-        skus: (col.skus || []).slice(0, 6),
+        skus: normalizedSkus,
         design_directions: col.agent_notes
           ? Object.values(col.agent_notes).slice(0, 3) as string[]
           : [],
@@ -123,7 +168,7 @@ export default function Create() {
         status: "concept",
       });
       setExpandedStep("previz");
-      toast({ title: "Concept generated", description: `"${col.name}" ready for previz` });
+      toast({ title: "Concept generated", description: `"${colName}" ready for previz` });
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Unknown error";
       toast({ title: "Error", description: message, variant: "destructive" });
@@ -140,10 +185,12 @@ export default function Create() {
       const images: Record<number, string[]> = {};
       for (let i = 0; i < Math.min(concept.skus.length, 4); i++) {
         const sku = concept.skus[i];
+        const prompt = `CONCEPT PREVIEW ONLY. ${sku.mockup_brief || ""}`.trim();
+        const skuName = sku.name || `SKU-${i + 1}`;
         const { data, error } = await supabase.functions.invoke("generate-mockup", {
           body: {
-            prompt: `CONCEPT PREVIEW ONLY. ${sku.mockup_brief}. Watermark: CONCEPT ONLY`,
-            skuName: sku.name,
+            prompt,
+            skuName,
           },
         });
         if (error) throw error;
@@ -491,13 +538,24 @@ function StepPreviz({
 }) {
   const hasImages = Object.keys(previzImages).length > 0;
 
+  const hasValidSkus = concept.skus.length > 0;
+
   return (
     <div className="space-y-4">
       <p className="text-xs text-muted-foreground font-body">
         Generate 2–4 concept mockups per SKU for internal decision. These are NOT production files.
       </p>
 
-      {!hasImages && (
+      {!hasValidSkus && (
+        <div className="p-3 rounded-md bg-destructive/10 border border-destructive/20 flex items-start gap-2">
+          <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+          <p className="text-xs font-body text-foreground">
+            No concept SKUs found. Go back to A. Idea and click Generate Concept.
+          </p>
+        </div>
+      )}
+
+      {hasValidSkus && !hasImages && (
         <Button
           onClick={onGenerate}
           disabled={isGenerating}
