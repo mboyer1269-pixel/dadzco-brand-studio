@@ -19,13 +19,12 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-    const { collection, mockups, userId } = await req.json();
+    const { collection, run_meta, mockups, userId } = await req.json();
     if (!collection) throw new Error("Missing collection data");
 
-    // Use the admin email user ID — find or use provided
+    // Resolve admin user
     let adminUserId = userId;
     if (!adminUserId) {
-      // Look up admin user
       const { data: roles } = await supabase
         .from("user_roles")
         .select("user_id")
@@ -34,27 +33,35 @@ serve(async (req) => {
       adminUserId = roles?.[0]?.user_id;
     }
     if (!adminUserId) {
-      // Fallback: use a placeholder UUID for code-based auth
       adminUserId = "00000000-0000-0000-0000-000000000001";
     }
 
     console.log("Saving collection:", collection.name, "for user:", adminUserId);
 
-    // 1. Insert collection
+    // 1. Insert collection with full metadata
     const { data: col, error: colErr } = await supabase
       .from("collections")
       .insert({
         name: collection.name,
         description: collection.theme,
-        season: collection.season,
-        status: "draft",
+        season: collection.season || null,
+        status: collection.finance_gate?.passed ? "draft" : "blocked",
+        lifecycle_status: collection.finance_gate?.passed ? "idea" : "idea",
         user_id: adminUserId,
         metadata: {
-          source: "round_table",
+          source: "round_table_v2",
+          run_meta: run_meta || null,
+          tagline: collection.tagline,
+          why_now: collection.why_now,
           palette: collection.palette,
-          thank_you_note: collection.thank_you_note,
+          finance_gate: collection.finance_gate,
+          bundles: collection.bundles,
+          deliverables: collection.deliverables,
+          marketing_calendar: collection.marketing_calendar,
           agent_notes: collection.agent_notes,
         },
+        margin_validated: collection.finance_gate?.passed || false,
+        financial_gate_passed: collection.finance_gate?.passed || false,
       })
       .select("id")
       .single();
@@ -65,30 +72,36 @@ serve(async (req) => {
     }
 
     const collectionId = col.id;
-    console.log("Collection saved:", collectionId);
 
-    // 2. For each SKU: create design + collection_item + story
+    // 2. Insert SKUs as designs + collection_items + stories
     const skus = collection.skus || [];
+    let savedCount = 0;
+
     for (let i = 0; i < skus.length; i++) {
       const sku = skus[i];
       const mockupUrl = mockups?.[i] || null;
+      const pricing = sku.pricing || {};
 
       // Insert design
       const { data: design, error: designErr } = await supabase
         .from("designs")
         .insert({
-          title: sku.name,
-          mode: sku.type === "quiet" ? "quiet" : "funny",
+          title: sku.sku_name || sku.name || `SKU-${i + 1}`,
+          mode: sku.audience === "kid" ? "quiet" : "quiet",
           status: mockupUrl ? "generated" : "draft",
           image_url: mockupUrl,
-          prompt: sku.mockup_brief,
-          product_type: sku.products?.join(", "),
-          print_type: sku.placement,
+          prompt: sku.design_prompt,
+          product_type: sku.category,
+          print_type: sku.print_type,
+          negative_space_pct: 70,
           user_id: adminUserId,
           metadata: {
-            source: "round_table",
-            sku_type: sku.type,
-            products: sku.products,
+            source: "round_table_v2",
+            audience: sku.audience,
+            provider: sku.provider,
+            design_direction: sku.design_direction,
+            negative_prompt: sku.negative_prompt,
+            aop_spec: sku.aop_spec,
           },
         })
         .select("id")
@@ -99,17 +112,23 @@ serve(async (req) => {
         continue;
       }
 
-      // Insert collection item
+      // Insert collection item with new columns
+      const skuCode = `${collection.name.toUpperCase().replace(/[^A-Z0-9]/g, "-")}-${String(i + 1).padStart(2, "0")}`;
       const { error: itemErr } = await supabase
         .from("collection_items")
         .insert({
           collection_id: collectionId,
           design_id: design.id,
           position: i,
-          sku: `${collection.name.toUpperCase().replace(/\s+/g, "-")}-${String(i + 1).padStart(2, "0")}`,
-          cost: sku.adult_base_cost,
-          retail_price: sku.adult_retail,
-          margin: sku.margin_pct,
+          sku: skuCode,
+          cost: pricing.estimated_cost_cad || null,
+          retail_price: pricing.retail_cad || null,
+          margin: pricing.margin_pct || null,
+          provider: sku.provider || "printful",
+          print_type: sku.print_type || null,
+          design_prompt: sku.design_prompt || null,
+          negative_prompt: sku.negative_prompt || null,
+          aop_spec: sku.aop_spec || null,
           personalization: false,
         });
 
@@ -117,10 +136,9 @@ serve(async (req) => {
         console.error(`Collection item error for SKU ${i}:`, itemErr);
       }
 
-      // Insert story
-      const { error: storyErr } = await supabase
-        .from("stories")
-        .insert({
+      // Insert story (if storytelling data exists)
+      if (sku.story) {
+        await supabase.from("stories").insert({
           design_id: design.id,
           collection_id: collectionId,
           mythology: sku.story?.mythology || null,
@@ -131,16 +149,15 @@ serve(async (req) => {
           hero_image_brief: sku.story?.hero_image_brief || null,
           status: "draft",
         });
-
-      if (storyErr) {
-        console.error(`Story insert error for SKU ${i}:`, storyErr);
       }
+
+      savedCount++;
     }
 
-    console.log(`Collection "${collection.name}" saved with ${skus.length} SKUs`);
+    console.log(`Collection "${collection.name}" saved: ${savedCount}/${skus.length} SKUs`);
 
     return new Response(
-      JSON.stringify({ success: true, collectionId, skuCount: skus.length }),
+      JSON.stringify({ success: true, collectionId, skuCount: savedCount }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e) {

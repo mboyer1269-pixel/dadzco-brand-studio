@@ -218,38 +218,53 @@ export type Database = {
       }
       collection_items: {
         Row: {
+          aop_spec: Json | null
           collection_id: string
           cost: number | null
           created_at: string
           design_id: string
+          design_prompt: string | null
           id: string
           margin: number | null
+          negative_prompt: string | null
           personalization: boolean | null
           position: number | null
+          print_type: string | null
+          provider: string | null
           retail_price: number | null
           sku: string | null
         }
         Insert: {
+          aop_spec?: Json | null
           collection_id: string
           cost?: number | null
           created_at?: string
           design_id: string
+          design_prompt?: string | null
           id?: string
           margin?: number | null
+          negative_prompt?: string | null
           personalization?: boolean | null
           position?: number | null
+          print_type?: string | null
+          provider?: string | null
           retail_price?: number | null
           sku?: string | null
         }
         Update: {
+          aop_spec?: Json | null
           collection_id?: string
           cost?: number | null
           created_at?: string
           design_id?: string
+          design_prompt?: string | null
           id?: string
           margin?: number | null
+          negative_prompt?: string | null
           personalization?: boolean | null
           position?: number | null
+          print_type?: string | null
+          provider?: string | null
           retail_price?: number | null
           sku?: string | null
         }
