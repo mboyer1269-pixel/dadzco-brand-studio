@@ -4,54 +4,182 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Wand2, Lightbulb, Eye, Factory, ShieldCheck,
   ChevronDown, ChevronUp, Loader2, Sparkles,
-  Check, Lock, ImagePlus, AlertTriangle, FolderOpen,
+  Check, Lock, AlertTriangle, FolderOpen, Copy, Clipboard,
+  Plane, Package, ShoppingBag,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { BRAND_DNA } from "@/core/brand_dna";
 
-/* ────────── Types ────────── */
+/* ────────── Fixed MVP SKUs ────────── */
 
-interface ConceptSKU {
+interface FounderSKU {
   name: string;
-  type: "quiet" | "funny";
-  products: string[];
-  placement: string;
-  margin_target: number;
-  mockup_brief: string;
-  provider: string;
-  print_type: string;
+  category: string;
+  audience: "parent" | "kid";
+  provider: "printful" | "kin_custom";
+  print_type: "DTG" | "EMBROIDERY" | "AOP";
+  style: "quiet" | "funny";
+  patch_option: boolean;
+  cost_estimate_cad: number;
+  retail_cad: number;
+  margin_pct: number;
+  design_prompt_primary: string;
+  design_prompt_negative: string;
+  aop_spec: null | {
+    tile_size_px: number;
+    repeat_type: string;
+    density_rule: string;
+    panel_mapping: string[];
+    seam_safety: string;
+    color_limit: number;
+  };
 }
 
-interface ConceptResult {
-  name: string;
-  theme: string;
-  palette: string[];
-  skus: ConceptSKU[];
-  design_directions: string[];
-  score: number;
-  status: string;
+function buildFounderSKUs(idea: string): FounderSKU[] {
+  const theme = idea || "Aviation & Wonders";
+  const enforceMargin = (cost: number, retail: number): { retail_cad: number; margin_pct: number } => {
+    const minRetail = cost / (1 - BRAND_DNA.financial_constraints.minimum_margin_pct / 100);
+    const finalRetail = Math.max(retail, Math.ceil(minRetail));
+    const margin = Math.round(((finalRetail - cost) / finalRetail) * 100);
+    return { retail_cad: finalRetail, margin_pct: margin };
+  };
+
+  const tee = enforceMargin(14, 42);
+  const crew = enforceMargin(21, 59);
+  const cap = enforceMargin(12, 38);
+  const kid = enforceMargin(25, 62);
+
+  return [
+    {
+      name: "Parent Tee",
+      category: "tee",
+      audience: "parent",
+      provider: "printful",
+      print_type: "DTG",
+      style: "quiet",
+      patch_option: false,
+      cost_estimate_cad: 14,
+      ...tee,
+      design_prompt_primary: `Minimal premium ${theme} parent tee. Centered chest graphic, architectural linework, aviation heritage motif. 70%+ negative space. Noir profond base (#1A1A1A), ivoire details. No text unless brand name.`,
+      design_prompt_negative: BRAND_DNA.forbidden_elements.join(", ") + ", text heavy, busy layout, neon colors",
+      aop_spec: null,
+    },
+    {
+      name: "Parent Crewneck",
+      category: "crewneck",
+      audience: "parent",
+      provider: "printful",
+      print_type: "DTG",
+      style: "quiet",
+      patch_option: true,
+      cost_estimate_cad: 21,
+      ...crew,
+      design_prompt_primary: `Premium ${theme} crewneck. Left-chest emblem or subtle graphic. Aviation-inspired patch on lower front. Ivoire chaud base (#F4F1EC) with bronze heritage (#6E4B3A) accents. Architectural precision. 70%+ negative space.`,
+      design_prompt_negative: BRAND_DNA.forbidden_elements.join(", ") + ", loud graphics, centered large print",
+      aop_spec: null,
+    },
+    {
+      name: "Parent Cap",
+      category: "cap",
+      audience: "parent",
+      provider: "printful",
+      print_type: "EMBROIDERY",
+      style: "quiet",
+      patch_option: false,
+      cost_estimate_cad: 12,
+      ...cap,
+      design_prompt_primary: `${theme} dad cap. Front panel: small embroidered aviation emblem (max 3cm). Side: minimal brand wordmark. Colors: noir profond (#1A1A1A) or ivoire chaud (#F4F1EC). Clean, understated.`,
+      design_prompt_negative: BRAND_DNA.forbidden_elements.join(", ") + ", large embroidery, all-over print, snapback style",
+      aop_spec: null,
+    },
+    {
+      name: "Kid AOP Set",
+      category: "kid_aop_set",
+      audience: "kid",
+      provider: "kin_custom",
+      print_type: "AOP",
+      style: "funny",
+      patch_option: false,
+      cost_estimate_cad: 25,
+      ...kid,
+      design_prompt_primary: `Seamless ${theme} all-over pattern for kid set. Narrative aviation motifs (paper planes, clouds, compass roses, stars) in a sophisticated, premium style. 3-color max: noir profond, ivoire chaud, bronze heritage. Generous negative space, no childish graphics. Repeat tile 4500px seamless.`,
+      design_prompt_negative: BRAND_DNA.forbidden_elements.join(", ") + ", childish, bright primary colors, thick outlines, comic style",
+      aop_spec: {
+        tile_size_px: 4500,
+        repeat_type: "seamless",
+        density_rule: "generous_negative_space",
+        panel_mapping: ["front", "back", "sleeves", "hood", "collar"],
+        seam_safety: "keep key motifs away from seams",
+        color_limit: 3,
+      },
+    },
+  ];
 }
 
-type PipelineStep = "idea" | "previz" | "production" | "qa";
+/* ────────── Finance Gate ────────── */
 
-/* ── Local SVG Concept Card Generator ── */
+interface FinanceVerdict {
+  passed: boolean;
+  avg_margin: number;
+  aov_estimate: number;
+  bundle_price_cad: number;
+  reasons: string[];
+}
+
+function computeFinanceGate(skus: FounderSKU[]): FinanceVerdict {
+  const reasons: string[] = [];
+  const margins = skus.map((s) => s.margin_pct);
+  const avg = Math.round(margins.reduce((a, b) => a + b, 0) / margins.length);
+  const totalRetail = skus.reduce((a, s) => a + s.retail_cad, 0);
+  const bundleDiscount = 0.15;
+  const bundlePrice = Math.round(totalRetail * (1 - bundleDiscount));
+  const aov = Math.round(totalRetail / 2); // estimate: customer buys ~2 items
+
+  for (const s of skus) {
+    if (s.margin_pct < BRAND_DNA.financial_constraints.minimum_margin_pct) {
+      reasons.push(`${s.name} margin ${s.margin_pct}% < ${BRAND_DNA.financial_constraints.minimum_margin_pct}%`);
+    }
+  }
+  if (aov < BRAND_DNA.financial_constraints.target_aov) {
+    reasons.push(`Estimated AOV ${aov} CAD < target ${BRAND_DNA.financial_constraints.target_aov} CAD`);
+  }
+
+  return {
+    passed: reasons.length === 0,
+    avg_margin: avg,
+    aov_estimate: aov,
+    bundle_price_cad: bundlePrice,
+    reasons,
+  };
+}
+
+/* ────────── Production Tasks ────────── */
+
+function buildProductionTasks(skus: FounderSKU[]): string[] {
+  const tasks: string[] = [];
+  for (const s of skus) {
+    if (s.provider === "printful") {
+      tasks.push(`Generate ${s.print_type === "EMBROIDERY" ? "embroidery file" : "DTG print file"} for "${s.name}" via Leonardo (4500×5400 PNG 300DPI)`);
+    } else {
+      tasks.push(`Generate seamless tile for "${s.name}" via Kin Custom (4500×4500 seamless + panel templates)`);
+    }
+  }
+  tasks.push("Review all files against BRAND_DNA forbidden elements");
+  tasks.push("Upload Printful files to Printful dashboard");
+  tasks.push("Upload Kin Custom tiles + panel mapping");
+  tasks.push("Set up Shopify product listings with pricing");
+  tasks.push("Create launch content (Instagram + TikTok)");
+  return tasks;
+}
+
+/* ────────── Local Concept Card SVG ────────── */
+
 function escapeXml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
-function truncateText(s: string, max: number): string {
-  return s.length > max ? s.slice(0, max) + "…" : s;
 }
 
 function wrapText(text: string, maxChars: number): string[] {
@@ -67,51 +195,65 @@ function wrapText(text: string, maxChars: number): string[] {
     }
   }
   if (current) lines.push(current.trim());
-  return lines.slice(0, 2); // max 2 lines
+  return lines.slice(0, 3);
 }
 
-function generateLocalConceptCard(sku: ConceptSKU, index: number): string {
+function generateDesignConceptCard(sku: FounderSKU, index: number): string {
   const W = 400;
-  const H = 520;
-  const name = escapeXml(truncateText(sku.name, 24));
-  const providerLabel = escapeXml((sku.provider || "printful").toUpperCase());
-  const printLabel = escapeXml((sku.print_type || "DTG").toUpperCase());
-  const typeLabel = escapeXml(sku.type.toUpperCase());
-  const briefLines = wrapText(sku.mockup_brief || "", 42);
-
+  const H = 560;
   const bgColors = ["#1A1A1A", "#F4F1EC", "#2C2418", "#1E1E2E"];
   const fgColors = ["#F4F1EC", "#1A1A1A", "#F4F1EC", "#F4F1EC"];
   const bg = bgColors[index % bgColors.length];
   const fg = fgColors[index % fgColors.length];
   const accent = "#6E4B3A";
 
-  const briefSvg = briefLines.map((line, li) =>
-    `<text x="30" y="${350 + li * 18}" font-family="sans-serif" font-size="12" fill="${fg}" fill-opacity="0.6">${escapeXml(line)}</text>`
+  const providerLabel = sku.provider === "kin_custom" ? "KIN CUSTOM" : "PRINTFUL";
+  const promptLines = wrapText(sku.design_prompt_primary, 44);
+  const promptSvg = promptLines.map((line, li) =>
+    `<text x="30" y="${320 + li * 16}" font-family="sans-serif" font-size="11" fill="${fg}" fill-opacity="0.7">${escapeXml(line)}</text>`
   ).join("\n  ");
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
   <rect width="${W}" height="${H}" fill="${bg}" rx="12"/>
   <rect x="20" y="20" width="${W - 40}" height="3" fill="${accent}" rx="1.5"/>
-  <text x="30" y="60" font-family="sans-serif" font-size="22" font-weight="bold" fill="${fg}">${name}</text>
-  <text x="30" y="90" font-family="sans-serif" font-size="11" fill="${fg}" fill-opacity="0.5" letter-spacing="2">${typeLabel}</text>
-  <rect x="30" y="110" width="130" height="28" rx="4" fill="${accent}" fill-opacity="0.2"/>
-  <text x="95" y="129" text-anchor="middle" font-family="sans-serif" font-size="11" font-weight="bold" fill="${accent}">${providerLabel}</text>
-  <rect x="170" y="110" width="80" height="28" rx="4" fill="${fg}" fill-opacity="0.08"/>
-  <text x="210" y="129" text-anchor="middle" font-family="sans-serif" font-size="11" fill="${fg}" fill-opacity="0.6">${printLabel}</text>
-  <rect x="30" y="160" width="${W - 60}" height="160" rx="8" fill="${fg}" fill-opacity="0.05" stroke="${fg}" stroke-opacity="0.1" stroke-width="1" stroke-dasharray="6 3"/>
-  <text x="${W / 2}" y="230" text-anchor="middle" font-family="sans-serif" font-size="14" fill="${fg}" fill-opacity="0.3">DESIGN ZONE</text>
-  <text x="${W / 2}" y="255" text-anchor="middle" font-family="sans-serif" font-size="10" fill="${fg}" fill-opacity="0.2">Production-ready prompt attached</text>
-  <text x="30" y="340" font-family="sans-serif" font-size="10" fill="${fg}" fill-opacity="0.4" letter-spacing="1">BRIEF</text>
-  ${briefSvg}
-  <text x="${W / 2}" y="${H - 25}" text-anchor="middle" font-family="sans-serif" font-size="18" font-weight="bold" fill="${fg}" fill-opacity="0.15" letter-spacing="4">CONCEPT ONLY</text>
+  <text x="30" y="58" font-family="sans-serif" font-size="20" font-weight="bold" fill="${fg}">${escapeXml(sku.name)}</text>
+  <text x="30" y="80" font-family="sans-serif" font-size="10" fill="${fg}" fill-opacity="0.4" letter-spacing="2">${escapeXml(sku.category.toUpperCase())} · ${escapeXml(sku.style.toUpperCase())}</text>
+  <rect x="30" y="95" width="110" height="24" rx="4" fill="${accent}" fill-opacity="0.25"/>
+  <text x="85" y="112" text-anchor="middle" font-family="sans-serif" font-size="10" font-weight="bold" fill="${accent}">${escapeXml(providerLabel)}</text>
+  <rect x="150" y="95" width="65" height="24" rx="4" fill="${fg}" fill-opacity="0.08"/>
+  <text x="182" y="112" text-anchor="middle" font-family="sans-serif" font-size="10" fill="${fg}" fill-opacity="0.5">${escapeXml(sku.print_type)}</text>
+  <rect x="225" y="95" width="80" height="24" rx="4" fill="${fg}" fill-opacity="0.08"/>
+  <text x="265" y="112" text-anchor="middle" font-family="sans-serif" font-size="10" fill="${fg}" fill-opacity="0.5">${sku.retail_cad} CAD · ${sku.margin_pct}%</text>
+  <rect x="30" y="135" width="${W - 60}" height="150" rx="8" fill="${fg}" fill-opacity="0.04" stroke="${fg}" stroke-opacity="0.1" stroke-width="1" stroke-dasharray="6 3"/>
+  <text x="${W / 2}" y="200" text-anchor="middle" font-family="sans-serif" font-size="13" fill="${fg}" fill-opacity="0.25">DESIGN ZONE</text>
+  <text x="${W / 2}" y="220" text-anchor="middle" font-family="sans-serif" font-size="9" fill="${fg}" fill-opacity="0.15">Production image placeholder</text>
+  <text x="30" y="305" font-family="sans-serif" font-size="9" fill="${fg}" fill-opacity="0.3" letter-spacing="1.5">PRODUCTION PROMPT</text>
+  ${promptSvg}
+  ${sku.patch_option ? `<text x="30" y="${H - 60}" font-family="sans-serif" font-size="10" fill="${accent}">⊕ PATCH OPTION</text>` : ""}
+  <text x="${W / 2}" y="${H - 22}" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="bold" fill="${fg}" fill-opacity="0.12" letter-spacing="4">DESIGN CONCEPT</text>
 </svg>`;
 
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
+/* ────────── Types ────────── */
+
+interface FounderDropResult {
+  name: string;
+  theme: string;
+  season: string;
+  pack_type: string;
+  skus: FounderSKU[];
+  finance: FinanceVerdict;
+  production_tasks: string[];
+  score: number;
+}
+
+type PipelineStep = "idea" | "previz" | "production" | "qa";
+
 const STEPS: { key: PipelineStep; label: string; icon: typeof Lightbulb; description: string }[] = [
-  { key: "idea", label: "A · Idea", icon: Lightbulb, description: "Round Table concept generation" },
-  { key: "previz", label: "B · Previz", icon: Eye, description: "Concept mockups for internal review" },
+  { key: "idea", label: "A · Idea", icon: Lightbulb, description: "One idea → Founder Drop Pack" },
+  { key: "previz", label: "B · Design Concepts", icon: Eye, description: "Production prompts + concept cards" },
   { key: "production", label: "C · Production", icon: Factory, description: "Print-safe hi-res files via Leonardo" },
   { key: "qa", label: "D · QA + Decision", icon: ShieldCheck, description: "Score, approve, promote to Collection" },
 ];
@@ -123,18 +265,14 @@ export default function Create() {
   const [expandedStep, setExpandedStep] = useState<PipelineStep | null>("idea");
 
   // Step A state
-  const [theme, setTheme] = useState("");
-  const [capsuleType, setCapsuleType] = useState("hybrid");
-  const [objective, setObjective] = useState("");
-  const [season, setSeason] = useState("spring-summer");
-  const [isGeneratingConcept, setIsGeneratingConcept] = useState(false);
-  const [concept, setConcept] = useState<ConceptResult | null>(null);
+  const [idea, setIdea] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [result, setResult] = useState<FounderDropResult | null>(null);
+  const [savedCollectionId, setSavedCollectionId] = useState<string | null>(null);
 
   // Step B state
-  const [previzImages, setPrevizImages] = useState<Record<number, string[]>>({});
-  const [isGeneratingPreviz, setIsGeneratingPreviz] = useState(false);
+  const [conceptCards, setConceptCards] = useState<string[]>([]);
   const [previzApproved, setPrevizApproved] = useState(false);
-  const [variationCount, setVariationCount] = useState(0);
 
   // Step C state
   const [productionFiles, setProductionFiles] = useState<Record<number, string>>({});
@@ -150,154 +288,111 @@ export default function Create() {
 
   const canAccessStep = (step: PipelineStep): boolean => {
     if (step === "idea") return true;
-    if (step === "previz") return !!concept;
+    if (step === "previz") return !!result;
     if (step === "production") return previzApproved;
     if (step === "qa") return Object.keys(productionFiles).length > 0;
     return false;
   };
 
-  /* ── Step A: Generate Concept ── */
-  const handleGenerateConcept = useCallback(async () => {
-    setIsGeneratingConcept(true);
+  /* ── Step A: Generate Founder Drop Pack ── */
+  const handleGenerateFounderDrop = useCallback(async () => {
+    setIsGenerating(true);
     try {
-      const { data, error } = await supabase.functions.invoke("round-table", {
-        body: {
-          customInstructions: [
-            theme && `Theme: ${theme}`,
-            `Capsule type: ${capsuleType}`,
-            objective && `Objective: ${objective}`,
-            `Season: ${season}`,
-            "Generate exactly 1 collection with max 6 SKUs. Include concept score 0-100.",
-          ].filter(Boolean).join(". "),
-        },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      const skus = buildFounderSKUs(idea);
+      const finance = computeFinanceGate(skus);
+      const tasks = buildProductionTasks(skus);
+      const packName = idea.trim() || "Aviation & Wonders — Founder Drop";
 
-      const col = data?.collections?.[0];
-      if (!col) throw new Error("No collection returned");
+      const dropResult: FounderDropResult = {
+        name: packName,
+        theme: idea.trim() || "Aviation & Wonders",
+        season: "Evergreen",
+        pack_type: "founder_drop",
+        skus,
+        finance,
+        production_tasks: tasks,
+        score: finance.passed ? 88 : 65,
+      };
 
-      // ── Normalize collection fields ──
-      const colName = col.name || theme || "Aviation & Wonders — Founder Drop";
-      const colTheme = col.theme || theme || "Aviation & Wonders";
-      const rawSkus: any[] = Array.isArray(col.skus) ? col.skus.slice(0, 6) : [];
+      // Save to DB
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) throw new Error("Not authenticated");
 
-      // Normalize each SKU
-      const normalizedSkus: ConceptSKU[] = rawSkus
-        .map((sku: any, idx: number) => {
-          const name = (typeof sku.sku_name === "string" && sku.sku_name.trim())
-            ? sku.sku_name.trim()
-            : (typeof sku.name === "string" && sku.name.trim())
-            ? sku.name.trim()
-            : `${sku.category || sku.product_type || "SKU"} ${idx + 1}`;
+      const { data: colData, error: colError } = await supabase.from("collections").insert([{
+        name: packName,
+        description: `Founder Drop Pack: ${dropResult.theme}`,
+        season: "Evergreen",
+        user_id: userData.user.id,
+        status: "draft",
+        lifecycle_status: "idea",
+        financial_gate_passed: finance.passed,
+        metadata: {
+          source: "founder_drop",
+          pack_type: "founder_drop",
+          skus: skus.map((s) => ({
+            name: s.name,
+            category: s.category,
+            provider: s.provider,
+            print_type: s.print_type,
+            retail_cad: s.retail_cad,
+            cost_cad: s.cost_estimate_cad,
+            margin_pct: s.margin_pct,
+          })),
+          finance_verdict: finance,
+          production_tasks: tasks,
+        } as any,
+      }]).select().single();
 
-          const mockup_brief = (typeof sku.mockup_brief === "string" && sku.mockup_brief.trim())
-            ? sku.mockup_brief.trim()
-            : (typeof sku.design_prompt === "string" && sku.design_prompt.trim())
-            ? sku.design_prompt.trim()
-            : `Minimal premium design concept for ${name}. Aviation & Wonders DNA. No cartoons. 70% negative space. Parent minimal. Kids narrative AOP.`;
+      if (colError) throw colError;
+      setSavedCollectionId(colData.id);
 
-          const provider = sku.provider === "kin_custom" ? "kin_custom" : "printful";
-          const print_type = sku.print_type || (provider === "kin_custom" ? "AOP" : "DTG");
-
-          return {
-            name,
-            type: (sku.audience === "kid" ? "funny" : "quiet") as "quiet" | "funny",
-            products: [sku.category || "tee"],
-            placement: sku.design_direction || "center",
-            margin_target: sku.pricing?.margin_pct ?? 55,
-            mockup_brief,
-            provider,
-            print_type,
-          };
-        })
-        .filter((s) => s.name.length > 0);
-
-      if (normalizedSkus.length === 0) {
-        toast({
-          title: "Round Table returned invalid SKUs",
-          description: "No valid SKUs could be extracted. Try again with a clearer idea.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      setConcept({
-        name: colName,
-        theme: colTheme,
-        palette: (col.palette || []).slice(0, 3),
-        skus: normalizedSkus,
-        design_directions: col.agent_notes
-          ? Object.values(col.agent_notes).slice(0, 3) as string[]
-          : [],
-        score: col.concept_score || Math.round(Math.random() * 20 + 75),
-        status: "concept",
-      });
+      setResult(dropResult);
       setExpandedStep("previz");
-      toast({ title: "Concept generated", description: `"${colName}" ready for previz` });
+      toast({ title: "Founder Drop Pack generated", description: `"${packName}" — ${skus.length} SKUs, finance ${finance.passed ? "PASS ✓" : "FAIL ✗"}` });
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Unknown error";
       toast({ title: "Error", description: message, variant: "destructive" });
     } finally {
-      setIsGeneratingConcept(false);
+      setIsGenerating(false);
     }
-  }, [theme, capsuleType, objective, season, toast]);
+  }, [idea, toast]);
 
-  /* ── Step B: Generate Previz (fully local, no edge function) ── */
-  const handleGeneratePreviz = useCallback(() => {
-    if (!concept) return;
-    setIsGeneratingPreviz(true);
-    try {
-      const images: Record<number, string[]> = {};
-      const skusToRender = concept.skus.slice(0, 4);
-      for (let i = 0; i < skusToRender.length; i++) {
-        const sku = skusToRender[i];
-        const svgUrl = generateLocalConceptCard(sku, i);
-        images[i] = [svgUrl];
-      }
-      setPrevizImages(images);
-      toast({ title: "Previz ready", description: `${skusToRender.length} concept mockups generated locally` });
-    } finally {
-      setIsGeneratingPreviz(false);
-    }
-  }, [concept, toast]);
+  /* ── Step B: Generate Design Concepts ── */
+  const handleGenerateConcepts = useCallback(() => {
+    if (!result) return;
+    const cards = result.skus.map((sku, i) => generateDesignConceptCard(sku, i));
+    setConceptCards(cards);
+    toast({ title: "Design concepts ready", description: `${cards.length} concept cards generated` });
+  }, [result, toast]);
 
   /* ── Step C: Production (placeholder) ── */
   const handleGenerateProduction = useCallback(async () => {
-    if (!concept) return;
+    if (!result) return;
     setIsGeneratingProd(true);
     try {
-      // Production would call Leonardo HD endpoint
-      toast({
-        title: "Production pipeline",
-        description: "Leonardo HD generation will be connected in next phase",
-      });
-      // Mock: mark first SKU as having production file
+      toast({ title: "Production pipeline", description: "Leonardo HD generation will be connected in next phase" });
       setProductionFiles({ 0: "production-pending" });
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "Unknown error";
-      toast({ title: "Error", description: message, variant: "destructive" });
     } finally {
       setIsGeneratingProd(false);
     }
-  }, [concept, toast]);
+  }, [result, toast]);
 
   /* ── Step D: QA ── */
   const handleRunQA = useCallback(async () => {
-    if (!concept) return;
+    if (!result) return;
     setIsRunningQA(true);
     try {
       const { data, error } = await supabase.functions.invoke("score-collection", {
         body: {
           collection: {
-            name: concept.name,
-            theme: concept.theme,
-            skus: concept.skus,
+            name: result.name,
+            theme: result.theme,
+            skus: result.skus,
           },
         },
       });
       if (error) throw error;
-      const score = data?.scores?.final_score ?? concept.score;
+      const score = data?.scores?.final_score ?? result.score;
       setQaScore(score);
       toast({
         title: score >= 85 ? "Approved ✓" : score >= 70 ? "Review needed" : "High Risk",
@@ -305,12 +400,11 @@ export default function Create() {
         variant: score < 70 ? "destructive" : "default",
       });
     } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "Unknown error";
-      toast({ title: "QA error", description: message, variant: "destructive" });
+      toast({ title: "QA error", description: e instanceof Error ? e.message : "Unknown", variant: "destructive" });
     } finally {
       setIsRunningQA(false);
     }
-  }, [concept, toast]);
+  }, [result, toast]);
 
   return (
     <AppLayout>
@@ -324,17 +418,17 @@ export default function Create() {
             </h1>
           </div>
           <p className="text-sm text-muted-foreground font-body italic">
-            Idea → Previz → Production → QA — Vertical pipeline
+            One idea → Founder Drop Pack → 4 SKUs → Production → Launch
           </p>
         </div>
 
         {/* Pipeline Steps */}
         <div className="space-y-3">
-          {STEPS.map((step, idx) => {
+          {STEPS.map((step) => {
             const isExpanded = expandedStep === step.key;
             const isAccessible = canAccessStep(step.key);
             const isCompleted =
-              (step.key === "idea" && !!concept) ||
+              (step.key === "idea" && !!result) ||
               (step.key === "previz" && previzApproved) ||
               (step.key === "production" && Object.keys(productionFiles).length > 0) ||
               (step.key === "qa" && qaScore !== null);
@@ -346,7 +440,6 @@ export default function Create() {
                   !isAccessible ? "opacity-50" : ""
                 } ${isExpanded ? "ring-1 ring-accent" : ""}`}
               >
-                {/* Step Header */}
                 <button
                   onClick={() => isAccessible && toggleStep(step.key)}
                   disabled={!isAccessible}
@@ -386,47 +479,32 @@ export default function Create() {
                   </CardHeader>
                 </button>
 
-                {/* Step Content */}
                 {isExpanded && isAccessible && (
                   <CardContent className="pt-4 space-y-4">
                     {step.key === "idea" && (
                       <StepIdea
-                        theme={theme}
-                        setTheme={setTheme}
-                        capsuleType={capsuleType}
-                        setCapsuleType={setCapsuleType}
-                        objective={objective}
-                        setObjective={setObjective}
-                        season={season}
-                        setSeason={setSeason}
-                        isGenerating={isGeneratingConcept}
-                        onGenerate={handleGenerateConcept}
-                        concept={concept}
+                        idea={idea}
+                        setIdea={setIdea}
+                        isGenerating={isGenerating}
+                        onGenerate={handleGenerateFounderDrop}
+                        result={result}
                       />
                     )}
-                    {step.key === "previz" && concept && (
+                    {step.key === "previz" && result && (
                       <StepPreviz
-                        concept={concept}
-                        previzImages={previzImages}
-                        isGenerating={isGeneratingPreviz}
-                        onGenerate={handleGeneratePreviz}
+                        result={result}
+                        conceptCards={conceptCards}
+                        onGenerate={handleGenerateConcepts}
                         approved={previzApproved}
                         onApprove={() => {
                           setPrevizApproved(true);
                           setExpandedStep("production");
                         }}
-                        variationCount={variationCount}
-                        onRequestVariation={() => {
-                          if (variationCount < 2) {
-                            setVariationCount((c) => c + 1);
-                            handleGeneratePreviz();
-                          }
-                        }}
                       />
                     )}
-                    {step.key === "production" && concept && (
+                    {step.key === "production" && result && (
                       <StepProduction
-                        concept={concept}
+                        result={result}
                         productionFiles={productionFiles}
                         isGenerating={isGeneratingProd}
                         onGenerate={handleGenerateProduction}
@@ -436,12 +514,13 @@ export default function Create() {
                         }}
                       />
                     )}
-                    {step.key === "qa" && concept && (
+                    {step.key === "qa" && result && (
                       <StepQA
-                        concept={concept}
+                        result={result}
                         qaScore={qaScore}
                         isRunning={isRunningQA}
                         onRunQA={handleRunQA}
+                        collectionId={savedCollectionId}
                       />
                     )}
                   </CardContent>
@@ -458,226 +537,229 @@ export default function Create() {
 /* ────────── Step A: Idea ────────── */
 
 function StepIdea({
-  theme, setTheme, capsuleType, setCapsuleType, objective, setObjective,
-  season, setSeason, isGenerating, onGenerate, concept,
+  idea, setIdea, isGenerating, onGenerate, result,
 }: {
-  theme: string; setTheme: (v: string) => void;
-  capsuleType: string; setCapsuleType: (v: string) => void;
-  objective: string; setObjective: (v: string) => void;
-  season: string; setSeason: (v: string) => void;
-  isGenerating: boolean; onGenerate: () => void;
-  concept: ConceptResult | null;
+  idea: string;
+  setIdea: (v: string) => void;
+  isGenerating: boolean;
+  onGenerate: () => void;
+  result: FounderDropResult | null;
 }) {
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div>
-          <label className="text-[10px] font-body uppercase tracking-wider text-muted-foreground mb-1 block">
-            Your Idea
-          </label>
-          <Input
-            placeholder="Put your idea here (ex: Aviation & Wonders Founder Drop)"
-            value={theme}
-            onChange={(e) => setTheme(e.target.value)}
-            className="font-body text-sm"
-          />
-        </div>
-        <div>
-          <label className="text-[10px] font-body uppercase tracking-wider text-muted-foreground mb-1 block">
-            Capsule Type
-          </label>
-          <Select value={capsuleType} onValueChange={setCapsuleType}>
-            <SelectTrigger className="font-body text-sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="hybrid">Hybrid (Quiet + Funny)</SelectItem>
-              <SelectItem value="quiet">Quiet Luxury Only</SelectItem>
-              <SelectItem value="funny">Funny Premium Only</SelectItem>
-              <SelectItem value="mini">Mini Drop (3 SKUs)</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <label className="text-[10px] font-body uppercase tracking-wider text-muted-foreground mb-1 block">
-            Launch Intent
-          </label>
-          <Input
-            placeholder="Launch intent (ex: Founder Drop 150 units, cash-positive)"
-            value={objective}
-            onChange={(e) => setObjective(e.target.value)}
-            className="font-body text-sm"
-          />
-        </div>
-        <div>
-          <label className="text-[10px] font-body uppercase tracking-wider text-muted-foreground mb-1 block">
-            Season
-          </label>
-          <Select value={season} onValueChange={setSeason}>
-            <SelectTrigger className="font-body text-sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="spring-summer">Spring / Summer</SelectItem>
-              <SelectItem value="fall-winter">Fall / Winter</SelectItem>
-              <SelectItem value="holiday">Holiday</SelectItem>
-              <SelectItem value="evergreen">Evergreen</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+      <div>
+        <label className="text-[10px] font-body uppercase tracking-wider text-muted-foreground mb-1 block">
+          IDEA
+        </label>
+        <Input
+          placeholder='Your idea (ex: "Aviation & Wonders — Founder Drop 150")'
+          value={idea}
+          onChange={(e) => setIdea(e.target.value)}
+          className="font-body text-sm h-12"
+        />
+        <p className="text-[10px] text-muted-foreground font-body mt-1">
+          Enter your drop concept. The system generates 4 fixed MVP SKUs: Parent Tee, Crewneck, Cap + Kid AOP Set.
+        </p>
       </div>
 
       <Button
         onClick={onGenerate}
         disabled={isGenerating}
-        className="w-full font-body text-xs tracking-[0.15em] uppercase h-12 btn-glow"
+        className="w-full font-body text-xs tracking-[0.15em] uppercase h-14 btn-glow"
+        size="lg"
       >
         {isGenerating ? (
           <>
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            Round Table is generating…
+            <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+            Generating Founder Drop Pack…
           </>
         ) : (
           <>
-            <Sparkles className="h-4 w-4 mr-2" />
-            Generate Concept
+            <Package className="h-5 w-5 mr-2" />
+            Generate Founder Drop Pack
           </>
         )}
       </Button>
 
-      {/* Concept Result */}
-      {concept && (
-        <div className="border border-border rounded-lg p-4 space-y-3 bg-muted/30">
+      {/* Result Summary */}
+      {result && (
+        <div className="border border-border rounded-lg p-4 space-y-4 bg-muted/30">
           <div className="flex items-center justify-between">
-            <h4 className="font-display text-base font-light text-foreground">{concept.name}</h4>
-            <Badge variant={concept.score >= 80 ? "default" : "secondary"} className="text-[10px] font-body">
-              Score: {concept.score}/100
+            <h4 className="font-display text-base font-light text-foreground">{result.name}</h4>
+            <Badge variant={result.finance.passed ? "default" : "destructive"} className="text-[10px] font-body">
+              Finance: {result.finance.passed ? "PASS ✓" : "FAIL ✗"}
             </Badge>
           </div>
-          <p className="text-xs text-muted-foreground font-body">{concept.theme}</p>
-          <div className="flex gap-2">
-            {concept.palette.map((c, i) => (
-              <span key={i} className="text-xs font-body text-muted-foreground">
-                {c}{i < concept.palette.length - 1 ? " ·" : ""}
-              </span>
+
+          {/* SKU Grid */}
+          <div className="grid grid-cols-2 gap-2">
+            {result.skus.map((sku, i) => (
+              <div key={i} className="border border-border rounded-md p-2.5 bg-background">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-body font-medium text-foreground">{sku.name}</span>
+                  <Badge variant="outline" className="text-[8px] font-body">
+                    {sku.provider === "kin_custom" ? "Kin" : "Printful"}
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-2 text-[10px] text-muted-foreground font-body">
+                  <span>{sku.print_type}</span>
+                  <span>·</span>
+                  <span>{sku.retail_cad} CAD</span>
+                  <span>·</span>
+                  <span className={sku.margin_pct >= 55 ? "text-primary" : "text-destructive"}>
+                    {sku.margin_pct}% margin
+                  </span>
+                </div>
+              </div>
             ))}
           </div>
-          <div className="flex flex-wrap gap-1">
-            {concept.skus.map((sku, i) => (
-              <Badge key={i} variant="outline" className="text-[9px] font-body">
-                {sku.name}
-              </Badge>
-            ))}
+
+          {/* Pricing Summary */}
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="bg-background border border-border rounded-md p-2">
+              <p className="text-lg font-display text-foreground">{result.finance.avg_margin}%</p>
+              <p className="text-[9px] text-muted-foreground font-body uppercase">Avg Margin</p>
+            </div>
+            <div className="bg-background border border-border rounded-md p-2">
+              <p className="text-lg font-display text-foreground">{result.finance.aov_estimate} CAD</p>
+              <p className="text-[9px] text-muted-foreground font-body uppercase">Est. AOV</p>
+            </div>
+            <div className="bg-background border border-border rounded-md p-2">
+              <p className="text-lg font-display text-foreground">{result.finance.bundle_price_cad} CAD</p>
+              <p className="text-[9px] text-muted-foreground font-body uppercase">Bundle (−15%)</p>
+            </div>
           </div>
+
+          {/* Finance Failures */}
+          {!result.finance.passed && result.finance.reasons.length > 0 && (
+            <div className="p-3 rounded-md bg-destructive/10 border border-destructive/20">
+              <p className="text-[10px] font-body font-medium text-destructive uppercase mb-1">Finance Gate Failures</p>
+              {result.finance.reasons.map((r, i) => (
+                <p key={i} className="text-xs font-body text-foreground">• {r}</p>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-/* ────────── Step B: Previz ────────── */
+/* ────────── Step B: Design Concepts ────────── */
 
 function StepPreviz({
-  concept, previzImages, isGenerating, onGenerate,
-  approved, onApprove, variationCount, onRequestVariation,
+  result, conceptCards, onGenerate, approved, onApprove,
 }: {
-  concept: ConceptResult;
-  previzImages: Record<number, string[]>;
-  isGenerating: boolean;
+  result: FounderDropResult;
+  conceptCards: string[];
   onGenerate: () => void;
   approved: boolean;
   onApprove: () => void;
-  variationCount: number;
-  onRequestVariation: () => void;
 }) {
-  const hasImages = Object.keys(previzImages).length > 0;
+  const { toast } = useToast();
+  const hasCards = conceptCards.length > 0;
 
-  const hasValidSkus = concept.skus.length > 0;
+  const copyPrompt = (prompt: string, name: string) => {
+    navigator.clipboard.writeText(prompt);
+    toast({ title: "Copied", description: `${name} prompt copied to clipboard` });
+  };
 
   return (
     <div className="space-y-4">
       <p className="text-xs text-muted-foreground font-body">
-        Generate 2–4 concept mockups per SKU for internal decision. These are NOT production files.
+        Each SKU has a production-ready prompt. Copy it for Leonardo / Kin Custom generation.
       </p>
 
-      {!hasValidSkus && (
-        <div className="p-3 rounded-md bg-destructive/10 border border-destructive/20 flex items-start gap-2">
-          <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
-          <p className="text-xs font-body text-foreground">
-            No concept SKUs found. Go back to A. Idea and click Generate Concept.
-          </p>
-        </div>
-      )}
+      {/* Prompt List */}
+      <div className="space-y-2">
+        {result.skus.map((sku, i) => (
+          <div key={i} className="border border-border rounded-md p-3 bg-background">
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-body font-medium text-foreground">{sku.name}</span>
+                <Badge variant="outline" className="text-[8px]">{sku.provider === "kin_custom" ? "Kin" : "Printful"}</Badge>
+                <Badge variant="secondary" className="text-[8px]">{sku.print_type}</Badge>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2"
+                onClick={() => copyPrompt(sku.design_prompt_primary, sku.name)}
+              >
+                <Copy className="h-3 w-3 mr-1" />
+                <span className="text-[10px] font-body">Copy</span>
+              </Button>
+            </div>
+            <p className="text-[11px] font-body text-muted-foreground leading-relaxed">
+              {sku.design_prompt_primary}
+            </p>
+            {sku.design_prompt_negative && (
+              <p className="text-[10px] font-body text-destructive/70 mt-1">
+                <span className="font-medium">Negative:</span> {sku.design_prompt_negative}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
 
-      {hasValidSkus && !hasImages && (
+      {/* Concept Cards */}
+      {!hasCards && (
         <Button
           onClick={onGenerate}
-          disabled={isGenerating}
+          variant="outline"
           className="font-body text-xs tracking-[0.15em] uppercase h-10"
         >
-          {isGenerating ? (
-            <>
-              <Loader2 className="h-3 w-3 mr-2 animate-spin" />
-              Generating concept mockups…
-            </>
-          ) : (
-            <>
-              <ImagePlus className="h-3 w-3 mr-2" />
-              Generate Concept Mockups
-            </>
-          )}
+          <Eye className="h-3 w-3 mr-2" />
+          Generate Design Concept Cards
         </Button>
       )}
 
-      {hasImages && (
-        <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {Object.entries(previzImages).map(([idx, urls]) =>
-              urls.map((url, ui) => (
-                <div key={`${idx}-${ui}`} className="relative rounded-lg overflow-hidden border border-border bg-muted/20">
-                  <img
-                    src={url}
-                    alt={`Concept ${concept.skus[Number(idx)]?.name || idx}`}
-                    className="w-full h-auto object-contain"
-                    loading="lazy"
-                  />
-                  <div className="absolute bottom-0 left-0 right-0 bg-destructive/80 text-destructive-foreground text-[9px] font-body text-center py-0.5 uppercase tracking-wider">
-                    Concept Only
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-
-          <div className="flex gap-2">
-            {!approved && (
-              <>
-                <Button
-                  onClick={onApprove}
-                  className="font-body text-xs tracking-[0.15em] uppercase h-10"
-                >
-                  <Check className="h-3 w-3 mr-2" />
-                  Approve Direction
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={onRequestVariation}
-                  disabled={variationCount >= 2 || isGenerating}
-                  className="font-body text-xs tracking-[0.15em] uppercase h-10"
-                >
-                  <ImagePlus className="h-3 w-3 mr-2" />
-                  Request Variation ({variationCount}/2)
-                </Button>
-              </>
-            )}
-            {approved && (
-              <Badge variant="default" className="text-xs font-body">
-                <Check className="h-3 w-3 mr-1" /> Direction Approved
-              </Badge>
-            )}
-          </div>
-        </>
+      {hasCards && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {conceptCards.map((url, i) => (
+            <div key={i} className="relative rounded-lg overflow-hidden border border-border bg-muted/20">
+              <img
+                src={url}
+                alt={`Concept ${result.skus[i]?.name || i}`}
+                className="w-full h-auto object-contain"
+                loading="lazy"
+              />
+            </div>
+          ))}
+        </div>
       )}
+
+      {/* Action Checklist */}
+      <div className="border border-border rounded-md p-3 bg-muted/20">
+        <p className="text-[10px] font-body font-medium text-muted-foreground uppercase mb-2 tracking-wider">
+          Next Actions
+        </p>
+        <div className="space-y-1">
+          {result.production_tasks.slice(0, 5).map((task, i) => (
+            <div key={i} className="flex items-start gap-2">
+              <div className="h-4 w-4 rounded border border-border mt-0.5 shrink-0" />
+              <p className="text-[11px] font-body text-foreground">{task}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Approve */}
+      <div className="flex gap-2">
+        {!approved ? (
+          <Button
+            onClick={onApprove}
+            className="font-body text-xs tracking-[0.15em] uppercase h-10"
+          >
+            <Check className="h-3 w-3 mr-2" />
+            Approve Direction
+          </Button>
+        ) : (
+          <Badge variant="default" className="text-xs font-body">
+            <Check className="h-3 w-3 mr-1" /> Direction Approved
+          </Badge>
+        )}
+      </div>
     </div>
   );
 }
@@ -685,9 +767,9 @@ function StepPreviz({
 /* ────────── Step C: Production ────────── */
 
 function StepProduction({
-  concept, productionFiles, isGenerating, onGenerate, onRunQA,
+  result, productionFiles, isGenerating, onGenerate, onRunQA,
 }: {
-  concept: ConceptResult;
+  result: FounderDropResult;
   productionFiles: Record<number, string>;
   isGenerating: boolean;
   onGenerate: () => void;
@@ -708,23 +790,13 @@ function StepProduction({
           className="font-body text-xs tracking-[0.15em] uppercase h-10"
         >
           {isGenerating ? (
-            <>
-              <Loader2 className="h-3 w-3 mr-2 animate-spin" />
-              Generating…
-            </>
+            <><Loader2 className="h-3 w-3 mr-2 animate-spin" />Generating…</>
           ) : hasFiles ? (
-            <>
-              <Check className="h-3 w-3 mr-2" />
-              Files Generated
-            </>
+            <><Check className="h-3 w-3 mr-2" />Files Generated</>
           ) : (
-            <>
-              <Factory className="h-3 w-3 mr-2" />
-              Generate Production Files
-            </>
+            <><Factory className="h-3 w-3 mr-2" />Generate Production Files</>
           )}
         </Button>
-
         {hasFiles && (
           <Button
             variant="outline"
@@ -743,16 +815,15 @@ function StepProduction({
 /* ────────── Step D: QA + Decision ────────── */
 
 function StepQA({
-  concept, qaScore, isRunning, onRunQA,
+  result, qaScore, isRunning, onRunQA, collectionId,
 }: {
-  concept: ConceptResult;
+  result: FounderDropResult;
   qaScore: number | null;
   isRunning: boolean;
   onRunQA: () => void;
+  collectionId: string | null;
 }) {
   const { toast } = useToast();
-  const [isPromoting, setIsPromoting] = useState(false);
-  const [collectionId, setCollectionId] = useState<string | null>(null);
   const [isApproving, setIsApproving] = useState(false);
   const [approveResult, setApproveResult] = useState<{ approved: boolean; failures?: any[] } | null>(null);
 
@@ -760,32 +831,6 @@ function StepQA({
     if (score >= 85) return { label: "Approved", variant: "default" as const, color: "text-foreground" };
     if (score >= 70) return { label: "Review", variant: "secondary" as const, color: "text-muted-foreground" };
     return { label: "High Risk", variant: "destructive" as const, color: "text-destructive" };
-  };
-
-  const handlePromote = async () => {
-    setIsPromoting(true);
-    try {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) throw new Error("Not authenticated");
-
-      const { data, error } = await supabase.from("collections").insert([{
-        name: concept.name,
-        description: concept.theme,
-        season: concept.palette.join(", "),
-        user_id: userData.user.id,
-        status: "draft",
-        lifecycle_status: "idea",
-        metadata: { source: "round_table", palette: concept.palette, skus: concept.skus } as any,
-      }]).select().single();
-
-      if (error) throw error;
-      setCollectionId(data.id);
-      toast({ title: "Collection créée", description: `"${concept.name}" ajoutée aux Collections` });
-    } catch (e: unknown) {
-      toast({ title: "Erreur", description: e instanceof Error ? e.message : "Unknown", variant: "destructive" });
-    } finally {
-      setIsPromoting(false);
-    }
   };
 
   const handleApproveHQ = async () => {
@@ -797,7 +842,6 @@ function StepQA({
         body: { collectionId },
       });
       if (error) {
-        // Edge function returned non-2xx
         const parsed = typeof error === "object" ? error : { message: String(error) };
         setApproveResult({ approved: false, failures: [{ gate: "invoke", message: parsed.message || "Error" }] });
         toast({ title: "Gate check failed", description: parsed.message, variant: "destructive" });
@@ -811,7 +855,7 @@ function StepQA({
         toast({ title: "Approved for HQ ✓", description: "Collection approved for production" });
       }
     } catch (e: unknown) {
-      toast({ title: "Erreur", description: e instanceof Error ? e.message : "Unknown", variant: "destructive" });
+      toast({ title: "Error", description: e instanceof Error ? e.message : "Unknown", variant: "destructive" });
     } finally {
       setIsApproving(false);
     }
@@ -826,15 +870,9 @@ function StepQA({
           className="font-body text-xs tracking-[0.15em] uppercase h-10"
         >
           {isRunning ? (
-            <>
-              <Loader2 className="h-3 w-3 mr-2 animate-spin" />
-              Running QA…
-            </>
+            <><Loader2 className="h-3 w-3 mr-2 animate-spin" />Running QA…</>
           ) : (
-            <>
-              <ShieldCheck className="h-3 w-3 mr-2" />
-              Run QA Gate
-            </>
+            <><ShieldCheck className="h-3 w-3 mr-2" />Run QA Gate</>
           )}
         </Button>
       )}
@@ -851,10 +889,10 @@ function StepQA({
               </Badge>
               <p className="text-[10px] text-muted-foreground font-body mt-1">
                 {qaScore >= 85
-                  ? "Ready to promote to Collection"
+                  ? "Ready to approve for HQ"
                   : qaScore >= 70
-                  ? "Needs review before promotion"
-                  : "High risk — confirmation required to proceed"}
+                  ? "Needs review before approval"
+                  : "High risk — confirmation required"}
               </p>
             </div>
           </div>
@@ -863,30 +901,16 @@ function StepQA({
             <div className="p-3 rounded-md bg-destructive/10 border border-destructive/20 flex items-start gap-2">
               <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
               <p className="text-xs font-body text-foreground">
-                This capsule scored below 70. Launching requires override confirmation and will be logged in risk history.
+                Score below 70. Launching requires override and will be logged in risk history.
               </p>
             </div>
           )}
 
           <div className="flex gap-2 flex-wrap">
-            {!collectionId && (
-              <Button
-                className="font-body text-xs tracking-[0.15em] uppercase h-10"
-                onClick={handlePromote}
-                disabled={isPromoting}
-              >
-                {isPromoting ? (
-                  <><Loader2 className="h-3 w-3 mr-2 animate-spin" />Promoting…</>
-                ) : (
-                  <><FolderOpen className="h-3 w-3 mr-2" />Promote to Collection</>
-                )}
-              </Button>
-            )}
-
             {collectionId && (
               <>
                 <Badge variant="default" className="text-xs font-body h-10 px-4 flex items-center">
-                  <Check className="h-3 w-3 mr-1" /> Collection Created
+                  <Check className="h-3 w-3 mr-1" /> Collection Saved
                 </Badge>
                 <Button
                   variant="outline"
@@ -906,7 +930,6 @@ function StepQA({
             )}
           </div>
 
-          {/* Gate failures */}
           {approveResult && !approveResult.approved && approveResult.failures && (
             <div className="space-y-1.5 mt-2">
               {approveResult.failures.map((f: any, i: number) => (
