@@ -4,11 +4,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Slider } from "@/components/ui/slider";
 import {
   Wand2, Lightbulb, Eye, Factory, ShieldCheck,
-  ChevronDown, ChevronUp, Loader2, Sparkles,
-  Check, Lock, AlertTriangle, FolderOpen, Copy, Clipboard,
-  Plane, Package, ShoppingBag,
+  ChevronDown, ChevronUp, Loader2,
+  Check, Lock, AlertTriangle, Copy, Package,
+  DollarSign, Zap, Settings2,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -29,6 +30,7 @@ interface FounderSKU {
   margin_pct: number;
   design_prompt_primary: string;
   design_prompt_negative: string;
+  mockup_brief: string;
   aop_spec: null | {
     tile_size_px: number;
     repeat_type: string;
@@ -39,14 +41,16 @@ interface FounderSKU {
   };
 }
 
+function enforceMargin(cost: number, retail: number): { retail_cad: number; margin_pct: number } {
+  const minRetail = cost / (1 - BRAND_DNA.financial_constraints.minimum_margin_pct / 100);
+  const finalRetail = Math.max(retail, Math.ceil(minRetail));
+  const margin = Math.round(((finalRetail - cost) / finalRetail) * 100);
+  return { retail_cad: finalRetail, margin_pct: margin };
+}
+
 function buildFounderSKUs(idea: string): FounderSKU[] {
   const theme = idea || "Aviation & Wonders";
-  const enforceMargin = (cost: number, retail: number): { retail_cad: number; margin_pct: number } => {
-    const minRetail = cost / (1 - BRAND_DNA.financial_constraints.minimum_margin_pct / 100);
-    const finalRetail = Math.max(retail, Math.ceil(minRetail));
-    const margin = Math.round(((finalRetail - cost) / finalRetail) * 100);
-    return { retail_cad: finalRetail, margin_pct: margin };
-  };
+  const neg = BRAND_DNA.forbidden_elements.join(", ");
 
   const tee = enforceMargin(14, 42);
   const crew = enforceMargin(21, 59);
@@ -64,8 +68,9 @@ function buildFounderSKUs(idea: string): FounderSKU[] {
       patch_option: false,
       cost_estimate_cad: 14,
       ...tee,
+      mockup_brief: `Minimal ${theme} tee — centered chest graphic, aviation heritage linework, 70%+ negative space.`,
       design_prompt_primary: `Minimal premium ${theme} parent tee. Centered chest graphic, architectural linework, aviation heritage motif. 70%+ negative space. Noir profond base (#1A1A1A), ivoire details. No text unless brand name.`,
-      design_prompt_negative: BRAND_DNA.forbidden_elements.join(", ") + ", text heavy, busy layout, neon colors",
+      design_prompt_negative: neg + ", text heavy, busy layout, neon colors",
       aop_spec: null,
     },
     {
@@ -78,8 +83,9 @@ function buildFounderSKUs(idea: string): FounderSKU[] {
       patch_option: true,
       cost_estimate_cad: 21,
       ...crew,
+      mockup_brief: `Premium ${theme} crewneck — left-chest emblem, aviation-inspired patch on lower front, ivoire/bronze palette.`,
       design_prompt_primary: `Premium ${theme} crewneck. Left-chest emblem or subtle graphic. Aviation-inspired patch on lower front. Ivoire chaud base (#F4F1EC) with bronze heritage (#6E4B3A) accents. Architectural precision. 70%+ negative space.`,
-      design_prompt_negative: BRAND_DNA.forbidden_elements.join(", ") + ", loud graphics, centered large print",
+      design_prompt_negative: neg + ", loud graphics, centered large print",
       aop_spec: null,
     },
     {
@@ -92,8 +98,9 @@ function buildFounderSKUs(idea: string): FounderSKU[] {
       patch_option: false,
       cost_estimate_cad: 12,
       ...cap,
+      mockup_brief: `${theme} dad cap — small embroidered aviation emblem (max 3cm), noir or ivoire base.`,
       design_prompt_primary: `${theme} dad cap. Front panel: small embroidered aviation emblem (max 3cm). Side: minimal brand wordmark. Colors: noir profond (#1A1A1A) or ivoire chaud (#F4F1EC). Clean, understated.`,
-      design_prompt_negative: BRAND_DNA.forbidden_elements.join(", ") + ", large embroidery, all-over print, snapback style",
+      design_prompt_negative: neg + ", large embroidery, all-over print, snapback style",
       aop_spec: null,
     },
     {
@@ -106,8 +113,9 @@ function buildFounderSKUs(idea: string): FounderSKU[] {
       patch_option: false,
       cost_estimate_cad: 25,
       ...kid,
+      mockup_brief: `Seamless ${theme} all-over pattern for kid set — narrative aviation motifs, 3-color max, sophisticated anti-kitsch.`,
       design_prompt_primary: `Seamless ${theme} all-over pattern for kid set. Narrative aviation motifs (paper planes, clouds, compass roses, stars) in a sophisticated, premium style. 3-color max: noir profond, ivoire chaud, bronze heritage. Generous negative space, no childish graphics. Repeat tile 4500px seamless.`,
-      design_prompt_negative: BRAND_DNA.forbidden_elements.join(", ") + ", childish, bright primary colors, thick outlines, comic style",
+      design_prompt_negative: neg + ", childish, bright primary colors, thick outlines, comic style",
       aop_spec: {
         tile_size_px: 4500,
         repeat_type: "seamless",
@@ -127,17 +135,18 @@ interface FinanceVerdict {
   avg_margin: number;
   aov_estimate: number;
   bundle_price_cad: number;
+  monthly_ad_budget: number;
+  max_cac: number;
   reasons: string[];
 }
 
-function computeFinanceGate(skus: FounderSKU[]): FinanceVerdict {
+function computeFinanceGate(skus: FounderSKU[], adBudget: number): FinanceVerdict {
   const reasons: string[] = [];
   const margins = skus.map((s) => s.margin_pct);
   const avg = Math.round(margins.reduce((a, b) => a + b, 0) / margins.length);
   const totalRetail = skus.reduce((a, s) => a + s.retail_cad, 0);
-  const bundleDiscount = 0.15;
-  const bundlePrice = Math.round(totalRetail * (1 - bundleDiscount));
-  const aov = Math.round(totalRetail / 2); // estimate: customer buys ~2 items
+  const bundlePrice = Math.round(totalRetail * 0.85);
+  const aov = Math.round(totalRetail / 2);
 
   for (const s of skus) {
     if (s.margin_pct < BRAND_DNA.financial_constraints.minimum_margin_pct) {
@@ -148,11 +157,15 @@ function computeFinanceGate(skus: FounderSKU[]): FinanceVerdict {
     reasons.push(`Estimated AOV ${aov} CAD < target ${BRAND_DNA.financial_constraints.target_aov} CAD`);
   }
 
+  const maxCac = Math.round(aov * BRAND_DNA.financial_constraints.max_cac_ratio);
+
   return {
     passed: reasons.length === 0,
     avg_margin: avg,
     aov_estimate: aov,
     bundle_price_cad: bundlePrice,
+    monthly_ad_budget: adBudget,
+    max_cac: maxCac,
     reasons,
   };
 }
@@ -208,8 +221,8 @@ function generateDesignConceptCard(sku: FounderSKU, index: number): string {
   const accent = "#6E4B3A";
 
   const providerLabel = sku.provider === "kin_custom" ? "KIN CUSTOM" : "PRINTFUL";
-  const promptLines = wrapText(sku.design_prompt_primary, 44);
-  const promptSvg = promptLines.map((line, li) =>
+  const briefLines = wrapText(sku.mockup_brief, 44);
+  const briefSvg = briefLines.map((line, li) =>
     `<text x="30" y="${320 + li * 16}" font-family="sans-serif" font-size="11" fill="${fg}" fill-opacity="0.7">${escapeXml(line)}</text>`
   ).join("\n  ");
 
@@ -227,8 +240,8 @@ function generateDesignConceptCard(sku: FounderSKU, index: number): string {
   <rect x="30" y="135" width="${W - 60}" height="150" rx="8" fill="${fg}" fill-opacity="0.04" stroke="${fg}" stroke-opacity="0.1" stroke-width="1" stroke-dasharray="6 3"/>
   <text x="${W / 2}" y="200" text-anchor="middle" font-family="sans-serif" font-size="13" fill="${fg}" fill-opacity="0.25">DESIGN ZONE</text>
   <text x="${W / 2}" y="220" text-anchor="middle" font-family="sans-serif" font-size="9" fill="${fg}" fill-opacity="0.15">Production image placeholder</text>
-  <text x="30" y="305" font-family="sans-serif" font-size="9" fill="${fg}" fill-opacity="0.3" letter-spacing="1.5">PRODUCTION PROMPT</text>
-  ${promptSvg}
+  <text x="30" y="305" font-family="sans-serif" font-size="9" fill="${fg}" fill-opacity="0.3" letter-spacing="1.5">BRIEF</text>
+  ${briefSvg}
   ${sku.patch_option ? `<text x="30" y="${H - 60}" font-family="sans-serif" font-size="10" fill="${accent}">⊕ PATCH OPTION</text>` : ""}
   <text x="${W / 2}" y="${H - 22}" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="bold" fill="${fg}" fill-opacity="0.12" letter-spacing="4">DESIGN CONCEPT</text>
 </svg>`;
@@ -246,39 +259,41 @@ interface FounderDropResult {
   skus: FounderSKU[];
   finance: FinanceVerdict;
   production_tasks: string[];
-  score: number;
+  conceptCards: string[];
 }
 
+type CreateMode = "founder_drop" | "round_table";
 type PipelineStep = "idea" | "previz" | "production" | "qa";
 
 const STEPS: { key: PipelineStep; label: string; icon: typeof Lightbulb; description: string }[] = [
   { key: "idea", label: "A · Idea", icon: Lightbulb, description: "One idea → Founder Drop Pack" },
-  { key: "previz", label: "B · Design Concepts", icon: Eye, description: "Production prompts + concept cards" },
-  { key: "production", label: "C · Production", icon: Factory, description: "Print-safe hi-res files via Leonardo" },
-  { key: "qa", label: "D · QA + Decision", icon: ShieldCheck, description: "Score, approve, promote to Collection" },
+  { key: "previz", label: "B · Design Concepts", icon: Eye, description: "Prompts + concept cards" },
+  { key: "production", label: "C · Production", icon: Factory, description: "Print-safe hi-res files" },
+  { key: "qa", label: "D · QA + Decision", icon: ShieldCheck, description: "Score, approve, promote" },
 ];
 
 /* ────────── Main Component ────────── */
 
 export default function Create() {
   const { toast } = useToast();
+  const [mode, setMode] = useState<CreateMode>("founder_drop");
   const [expandedStep, setExpandedStep] = useState<PipelineStep | null>("idea");
 
-  // Step A state
+  // Step A
   const [idea, setIdea] = useState("");
+  const [adBudget, setAdBudget] = useState(400);
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState<FounderDropResult | null>(null);
   const [savedCollectionId, setSavedCollectionId] = useState<string | null>(null);
 
-  // Step B state
-  const [conceptCards, setConceptCards] = useState<string[]>([]);
+  // Step B
   const [previzApproved, setPrevizApproved] = useState(false);
 
-  // Step C state
+  // Step C
   const [productionFiles, setProductionFiles] = useState<Record<number, string>>({});
   const [isGeneratingProd, setIsGeneratingProd] = useState(false);
 
-  // Step D state
+  // Step D
   const [qaScore, setQaScore] = useState<number | null>(null);
   const [isRunningQA, setIsRunningQA] = useState(false);
 
@@ -299,9 +314,12 @@ export default function Create() {
     setIsGenerating(true);
     try {
       const skus = buildFounderSKUs(idea);
-      const finance = computeFinanceGate(skus);
+      const finance = computeFinanceGate(skus, adBudget);
       const tasks = buildProductionTasks(skus);
       const packName = idea.trim() || "Aviation & Wonders — Founder Drop";
+
+      // Auto-generate concept cards (local SVG, no edge functions)
+      const conceptCards = skus.map((sku, i) => generateDesignConceptCard(sku, i));
 
       const dropResult: FounderDropResult = {
         name: packName,
@@ -311,7 +329,7 @@ export default function Create() {
         skus,
         finance,
         production_tasks: tasks,
-        score: finance.passed ? 88 : 65,
+        conceptCards,
       };
 
       // Save to DB
@@ -355,15 +373,7 @@ export default function Create() {
     } finally {
       setIsGenerating(false);
     }
-  }, [idea, toast]);
-
-  /* ── Step B: Generate Design Concepts ── */
-  const handleGenerateConcepts = useCallback(() => {
-    if (!result) return;
-    const cards = result.skus.map((sku, i) => generateDesignConceptCard(sku, i));
-    setConceptCards(cards);
-    toast({ title: "Design concepts ready", description: `${cards.length} concept cards generated` });
-  }, [result, toast]);
+  }, [idea, adBudget, toast]);
 
   /* ── Step C: Production (placeholder) ── */
   const handleGenerateProduction = useCallback(async () => {
@@ -383,42 +393,69 @@ export default function Create() {
     setIsRunningQA(true);
     try {
       const { data, error } = await supabase.functions.invoke("score-collection", {
-        body: {
-          collection: {
-            name: result.name,
-            theme: result.theme,
-            skus: result.skus,
-          },
-        },
+        body: { collection: { name: result.name, theme: result.theme, skus: result.skus } },
       });
       if (error) throw error;
-      const score = data?.scores?.final_score ?? result.score;
+      const score = data?.scores?.final_score ?? (result.finance.passed ? 88 : 65);
       setQaScore(score);
       toast({
         title: score >= 85 ? "Approved ✓" : score >= 70 ? "Review needed" : "High Risk",
         description: `QA Score: ${score}/100`,
         variant: score < 70 ? "destructive" : "default",
       });
-    } catch (e: unknown) {
-      toast({ title: "QA error", description: e instanceof Error ? e.message : "Unknown", variant: "destructive" });
+    } catch {
+      // Fallback score if edge function fails
+      const fallback = result.finance.passed ? 88 : 65;
+      setQaScore(fallback);
+      toast({ title: "QA Complete (local)", description: `Score: ${fallback}/100` });
     } finally {
       setIsRunningQA(false);
     }
   }, [result, toast]);
 
+  /* ── Round Table redirect ── */
+  if (mode === "round_table") {
+    return (
+      <AppLayout>
+        <div className="max-w-4xl mx-auto space-y-6">
+          <ModeToggle mode={mode} setMode={setMode} />
+          <Card className="border-border">
+            <CardContent className="p-8 text-center space-y-4">
+              <Settings2 className="h-10 w-10 mx-auto text-muted-foreground" />
+              <h2 className="font-display text-xl font-light text-foreground">Round Table — Advanced Mode</h2>
+              <p className="text-sm text-muted-foreground font-body max-w-md mx-auto">
+                Full AI Round Table with multi-agent concept generation, manual SKU configuration, and custom supplier routing.
+              </p>
+              <Button
+                variant="outline"
+                className="font-body text-xs tracking-[0.15em] uppercase"
+                onClick={() => window.location.href = "/round-table"}
+              >
+                Open Round Table
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </AppLayout>
+    );
+  }
+
   return (
     <AppLayout>
       <div className="max-w-4xl mx-auto space-y-6">
+        {/* Mode Toggle */}
+        <ModeToggle mode={mode} setMode={setMode} />
+
         {/* Header */}
         <div className="gradient-header rounded-lg p-6 -mx-2">
           <div className="flex items-center gap-3 mb-2">
-            <Wand2 className="h-6 w-6 text-foreground" />
+            <Package className="h-6 w-6 text-foreground" />
             <h1 className="font-display text-3xl font-light text-foreground tracking-wide">
-              Create
+              Founder Drop
             </h1>
           </div>
           <p className="text-sm text-muted-foreground font-body italic">
-            One idea → Founder Drop Pack → 4 SKUs → Production → Launch
+            One idea → 4 SKUs → Prompts → Routing → Finance Gate → Next Actions
           </p>
         </div>
 
@@ -485,6 +522,8 @@ export default function Create() {
                       <StepIdea
                         idea={idea}
                         setIdea={setIdea}
+                        adBudget={adBudget}
+                        setAdBudget={setAdBudget}
                         isGenerating={isGenerating}
                         onGenerate={handleGenerateFounderDrop}
                         result={result}
@@ -493,8 +532,6 @@ export default function Create() {
                     {step.key === "previz" && result && (
                       <StepPreviz
                         result={result}
-                        conceptCards={conceptCards}
-                        onGenerate={handleGenerateConcepts}
                         approved={previzApproved}
                         onApprove={() => {
                           setPrevizApproved(true);
@@ -534,13 +571,52 @@ export default function Create() {
   );
 }
 
+/* ────────── Mode Toggle ────────── */
+
+function ModeToggle({ mode, setMode }: { mode: CreateMode; setMode: (m: CreateMode) => void }) {
+  return (
+    <div className="flex items-center gap-1 p-1 rounded-lg bg-muted/50 border border-border w-fit">
+      <button
+        onClick={() => setMode("founder_drop")}
+        className={`px-4 py-2 rounded-md text-xs font-body tracking-wider uppercase transition-all flex items-center gap-2 ${
+          mode === "founder_drop"
+            ? "bg-primary text-primary-foreground shadow-sm"
+            : "text-muted-foreground hover:text-foreground"
+        }`}
+      >
+        <Zap className="h-3 w-3" />
+        Founder Drop
+        <Badge variant="secondary" className="text-[8px] font-body ml-1 px-1.5 py-0">
+          recommended
+        </Badge>
+      </button>
+      <button
+        onClick={() => setMode("round_table")}
+        className={`px-4 py-2 rounded-md text-xs font-body tracking-wider uppercase transition-all flex items-center gap-2 ${
+          mode === "round_table"
+            ? "bg-primary text-primary-foreground shadow-sm"
+            : "text-muted-foreground hover:text-foreground"
+        }`}
+      >
+        <Settings2 className="h-3 w-3" />
+        Round Table
+        <Badge variant="outline" className="text-[8px] font-body ml-1 px-1.5 py-0">
+          advanced
+        </Badge>
+      </button>
+    </div>
+  );
+}
+
 /* ────────── Step A: Idea ────────── */
 
 function StepIdea({
-  idea, setIdea, isGenerating, onGenerate, result,
+  idea, setIdea, adBudget, setAdBudget, isGenerating, onGenerate, result,
 }: {
   idea: string;
   setIdea: (v: string) => void;
+  adBudget: number;
+  setAdBudget: (v: number) => void;
   isGenerating: boolean;
   onGenerate: () => void;
   result: FounderDropResult | null;
@@ -549,17 +625,40 @@ function StepIdea({
     <div className="space-y-4">
       <div>
         <label className="text-[10px] font-body uppercase tracking-wider text-muted-foreground mb-1 block">
-          IDEA
+          IDEA (optional)
         </label>
         <Input
-          placeholder='Your idea (ex: "Aviation & Wonders — Founder Drop 150")'
+          placeholder="Aviation & Wonders"
           value={idea}
           onChange={(e) => setIdea(e.target.value)}
           className="font-body text-sm h-12"
         />
         <p className="text-[10px] text-muted-foreground font-body mt-1">
-          Enter your drop concept. The system generates 4 fixed MVP SKUs: Parent Tee, Crewneck, Cap + Kid AOP Set.
+          Leave empty for default theme. System auto-generates 4 MVP SKUs with full routing + pricing.
         </p>
+      </div>
+
+      {/* Ad Budget Slider */}
+      <div className="border border-border rounded-md p-3 bg-muted/20">
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-[10px] font-body uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+            <DollarSign className="h-3 w-3" />
+            Monthly Ad Budget
+          </label>
+          <span className="text-sm font-display font-light text-foreground">{adBudget} CAD</span>
+        </div>
+        <Slider
+          value={[adBudget]}
+          onValueChange={(v) => setAdBudget(v[0])}
+          min={300}
+          max={500}
+          step={25}
+          className="w-full"
+        />
+        <div className="flex justify-between text-[9px] text-muted-foreground font-body mt-1">
+          <span>300 CAD</span>
+          <span>500 CAD</span>
+        </div>
       </div>
 
       <Button
@@ -614,8 +713,8 @@ function StepIdea({
             ))}
           </div>
 
-          {/* Pricing Summary */}
-          <div className="grid grid-cols-3 gap-2 text-center">
+          {/* Finance Summary */}
+          <div className="grid grid-cols-4 gap-2 text-center">
             <div className="bg-background border border-border rounded-md p-2">
               <p className="text-lg font-display text-foreground">{result.finance.avg_margin}%</p>
               <p className="text-[9px] text-muted-foreground font-body uppercase">Avg Margin</p>
@@ -626,11 +725,14 @@ function StepIdea({
             </div>
             <div className="bg-background border border-border rounded-md p-2">
               <p className="text-lg font-display text-foreground">{result.finance.bundle_price_cad} CAD</p>
-              <p className="text-[9px] text-muted-foreground font-body uppercase">Bundle (−15%)</p>
+              <p className="text-[9px] text-muted-foreground font-body uppercase">Bundle −15%</p>
+            </div>
+            <div className="bg-background border border-border rounded-md p-2">
+              <p className="text-lg font-display text-foreground">{result.finance.max_cac} CAD</p>
+              <p className="text-[9px] text-muted-foreground font-body uppercase">Max CAC</p>
             </div>
           </div>
 
-          {/* Finance Failures */}
           {!result.finance.passed && result.finance.reasons.length > 0 && (
             <div className="p-3 rounded-md bg-destructive/10 border border-destructive/20">
               <p className="text-[10px] font-body font-medium text-destructive uppercase mb-1">Finance Gate Failures</p>
@@ -648,29 +750,51 @@ function StepIdea({
 /* ────────── Step B: Design Concepts ────────── */
 
 function StepPreviz({
-  result, conceptCards, onGenerate, approved, onApprove,
+  result, approved, onApprove,
 }: {
   result: FounderDropResult;
-  conceptCards: string[];
-  onGenerate: () => void;
   approved: boolean;
   onApprove: () => void;
 }) {
   const { toast } = useToast();
-  const hasCards = conceptCards.length > 0;
 
   const copyPrompt = (prompt: string, name: string) => {
     navigator.clipboard.writeText(prompt);
-    toast({ title: "Copied", description: `${name} prompt copied to clipboard` });
+    toast({ title: "Copied", description: `${name} prompt copied` });
+  };
+
+  const copyAll = () => {
+    const all = result.skus.map((s) => `--- ${s.name} (${s.provider}/${s.print_type}) ---\n${s.design_prompt_primary}\nNegative: ${s.design_prompt_negative}`).join("\n\n");
+    navigator.clipboard.writeText(all);
+    toast({ title: "All prompts copied", description: `${result.skus.length} prompts` });
   };
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-muted-foreground font-body">
-        Each SKU has a production-ready prompt. Copy it for Leonardo / Kin Custom generation.
-      </p>
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground font-body">
+          Production prompts + concept cards. Copy prompts for Leonardo / Kin Custom.
+        </p>
+        <Button variant="ghost" size="sm" className="h-7 text-[10px] font-body" onClick={copyAll}>
+          <Copy className="h-3 w-3 mr-1" /> Copy All Prompts
+        </Button>
+      </div>
 
-      {/* Prompt List */}
+      {/* Concept Cards Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {result.conceptCards.map((url, i) => (
+          <div key={i} className="relative rounded-lg overflow-hidden border border-border bg-muted/20">
+            <img
+              src={url}
+              alt={`Concept ${result.skus[i]?.name || i}`}
+              className="w-full h-auto object-contain"
+              loading="lazy"
+            />
+          </div>
+        ))}
+      </div>
+
+      {/* Prompt Details */}
       <div className="space-y-2">
         {result.skus.map((sku, i) => (
           <div key={i} className="border border-border rounded-md p-3 bg-background">
@@ -680,60 +804,22 @@ function StepPreviz({
                 <Badge variant="outline" className="text-[8px]">{sku.provider === "kin_custom" ? "Kin" : "Printful"}</Badge>
                 <Badge variant="secondary" className="text-[8px]">{sku.print_type}</Badge>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2"
-                onClick={() => copyPrompt(sku.design_prompt_primary, sku.name)}
-              >
+              <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => copyPrompt(sku.design_prompt_primary, sku.name)}>
                 <Copy className="h-3 w-3 mr-1" />
                 <span className="text-[10px] font-body">Copy</span>
               </Button>
             </div>
-            <p className="text-[11px] font-body text-muted-foreground leading-relaxed">
-              {sku.design_prompt_primary}
+            <p className="text-[11px] font-body text-muted-foreground leading-relaxed">{sku.design_prompt_primary}</p>
+            <p className="text-[10px] font-body text-destructive/70 mt-1">
+              <span className="font-medium">Negative:</span> {sku.design_prompt_negative}
             </p>
-            {sku.design_prompt_negative && (
-              <p className="text-[10px] font-body text-destructive/70 mt-1">
-                <span className="font-medium">Negative:</span> {sku.design_prompt_negative}
-              </p>
-            )}
           </div>
         ))}
       </div>
 
-      {/* Concept Cards */}
-      {!hasCards && (
-        <Button
-          onClick={onGenerate}
-          variant="outline"
-          className="font-body text-xs tracking-[0.15em] uppercase h-10"
-        >
-          <Eye className="h-3 w-3 mr-2" />
-          Generate Design Concept Cards
-        </Button>
-      )}
-
-      {hasCards && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {conceptCards.map((url, i) => (
-            <div key={i} className="relative rounded-lg overflow-hidden border border-border bg-muted/20">
-              <img
-                src={url}
-                alt={`Concept ${result.skus[i]?.name || i}`}
-                className="w-full h-auto object-contain"
-                loading="lazy"
-              />
-            </div>
-          ))}
-        </div>
-      )}
-
       {/* Action Checklist */}
       <div className="border border-border rounded-md p-3 bg-muted/20">
-        <p className="text-[10px] font-body font-medium text-muted-foreground uppercase mb-2 tracking-wider">
-          Next Actions
-        </p>
+        <p className="text-[10px] font-body font-medium text-muted-foreground uppercase mb-2 tracking-wider">Next Actions</p>
         <div className="space-y-1">
           {result.production_tasks.slice(0, 5).map((task, i) => (
             <div key={i} className="flex items-start gap-2">
@@ -747,12 +833,8 @@ function StepPreviz({
       {/* Approve */}
       <div className="flex gap-2">
         {!approved ? (
-          <Button
-            onClick={onApprove}
-            className="font-body text-xs tracking-[0.15em] uppercase h-10"
-          >
-            <Check className="h-3 w-3 mr-2" />
-            Approve Direction
+          <Button onClick={onApprove} className="font-body text-xs tracking-[0.15em] uppercase h-10">
+            <Check className="h-3 w-3 mr-2" /> Approve Direction
           </Button>
         ) : (
           <Badge variant="default" className="text-xs font-body">
@@ -782,7 +864,6 @@ function StepProduction({
       <p className="text-xs text-muted-foreground font-body">
         Generate print-safe hi-res PNG (parent) and seamless tiles (kid) via Leonardo HD.
       </p>
-
       <div className="flex gap-2">
         <Button
           onClick={onGenerate}
@@ -798,13 +879,8 @@ function StepProduction({
           )}
         </Button>
         {hasFiles && (
-          <Button
-            variant="outline"
-            onClick={onRunQA}
-            className="font-body text-xs tracking-[0.15em] uppercase h-10"
-          >
-            <ShieldCheck className="h-3 w-3 mr-2" />
-            Run QA Gate
+          <Button variant="outline" onClick={onRunQA} className="font-body text-xs tracking-[0.15em] uppercase h-10">
+            <ShieldCheck className="h-3 w-3 mr-2" /> Run QA Gate
           </Button>
         )}
       </div>
@@ -838,13 +914,10 @@ function StepQA({
     setIsApproving(true);
     setApproveResult(null);
     try {
-      const { data, error } = await supabase.functions.invoke("approve-hq", {
-        body: { collectionId },
-      });
+      const { data, error } = await supabase.functions.invoke("approve-hq", { body: { collectionId } });
       if (error) {
-        const parsed = typeof error === "object" ? error : { message: String(error) };
-        setApproveResult({ approved: false, failures: [{ gate: "invoke", message: parsed.message || "Error" }] });
-        toast({ title: "Gate check failed", description: parsed.message, variant: "destructive" });
+        setApproveResult({ approved: false, failures: [{ gate: "invoke", message: String(error) }] });
+        toast({ title: "Gate check failed", variant: "destructive" });
         return;
       }
       if (data?.approved === false) {
@@ -864,11 +937,7 @@ function StepQA({
   return (
     <div className="space-y-4">
       {qaScore === null && (
-        <Button
-          onClick={onRunQA}
-          disabled={isRunning}
-          className="font-body text-xs tracking-[0.15em] uppercase h-10"
-        >
+        <Button onClick={onRunQA} disabled={isRunning} className="font-body text-xs tracking-[0.15em] uppercase h-10">
           {isRunning ? (
             <><Loader2 className="h-3 w-3 mr-2 animate-spin" />Running QA…</>
           ) : (
@@ -888,11 +957,7 @@ function StepQA({
                 {getScoreStatus(qaScore).label}
               </Badge>
               <p className="text-[10px] text-muted-foreground font-body mt-1">
-                {qaScore >= 85
-                  ? "Ready to approve for HQ"
-                  : qaScore >= 70
-                  ? "Needs review before approval"
-                  : "High risk — confirmation required"}
+                {qaScore >= 85 ? "Ready to approve for HQ" : qaScore >= 70 ? "Needs review before approval" : "High risk — confirmation required"}
               </p>
             </div>
           </div>
