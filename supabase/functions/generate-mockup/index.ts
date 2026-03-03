@@ -17,18 +17,49 @@ serve(async (req) => {
 
   try {
     const { prompt, skuName, production, collectionId, skuId, margin_pct, negative_space_pct } = await req.json();
-    if (!prompt) {
-      return new Response(JSON.stringify({ error: "Missing prompt" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+
+    const isProduction = production === true;
+
+    // ── Preview mode: ALWAYS return 200 ──
+    if (!isProduction) {
+      const safePrompt = (prompt || "").trim();
+      const safeName = skuName || "SKU";
+      const placeholderUrl = `https://placehold.co/1024x1024/1a1a2e/ffffff?text=CONCEPT+ONLY%0A${encodeURIComponent(safeName)}`;
+
+      let supabase: any = null;
+      if (SUPABASE_URL && SERVICE_ROLE_KEY) {
+        supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+        await supabase.from("ai_generation_logs").insert({
+          task_type: "mockup_preview",
+          model_provider: "stub",
+          model_used: "placeholder",
+          status: "success",
+          collection_id: collectionId || null,
+          metadata: { skuName: safeName, skuId, prompt: safePrompt.slice(0, 200) },
+        }).catch(() => {});
+      }
+
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          mode: "preview",
+          imageUrl: placeholderUrl,
+          generationId: "stub",
+          watermark: "CONCEPT ONLY",
+          error: safePrompt ? null : "Missing prompt (preview fallback)",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    // ── Server-side DNA enforcement ──
+    // ── Production mode ──
+
+    // DNA enforcement
     const DNA_FORBIDDEN = ["cartoon", "kawaii", "clipart", "rainbow overload", "glitter", "excessive pattern density"];
     const DNA_MIN_MARGIN = 55;
     const DNA_MIN_SPACE = 70;
     const dnaViolations: string[] = [];
-    const promptLower = prompt.toLowerCase();
+    const promptLower = (prompt || "").toLowerCase();
     for (const f of DNA_FORBIDDEN) {
       if (promptLower.includes(f.toLowerCase())) dnaViolations.push(`Forbidden: "${f}"`);
     }
@@ -41,52 +72,38 @@ serve(async (req) => {
     if (dnaViolations.length > 0) {
       console.log("DNA BLOCKED mockup:", dnaViolations);
       return new Response(JSON.stringify({
+        ok: false,
+        mode: "production",
         status: "blocked_by_dna",
         message: "DNA BLOCKED: " + dnaViolations.join(" | "),
         violated_rules: dnaViolations,
-      }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        imageUrl: null,
+      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const isProduction = production === true;
-    console.log(`Mockup request: ${skuName || "unknown"}, production=${isProduction}`);
+    if (!prompt) {
+      return new Response(JSON.stringify({
+        ok: false, mode: "production", error: "Missing prompt", imageUrl: null,
+      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     const LEONARDO_API_KEY = Deno.env.get("LEONARDO_API_KEY");
 
-    // Production mode REQUIRES Leonardo API key
-    if (isProduction && !LEONARDO_API_KEY) {
+    if (!LEONARDO_API_KEY) {
       return new Response(
-        JSON.stringify({ error: "Leonardo API key not configured. Production generation unavailable." }),
-        { status: 501, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ ok: false, mode: "production", error: "Leonardo key not configured", imageUrl: null }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    console.log(`Mockup request: ${skuName || "unknown"}, production=true`);
 
     let supabase: any = null;
     if (SUPABASE_URL && SERVICE_ROLE_KEY) {
       supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
     }
 
-    // ── Preview NEVER calls Leonardo, even if key exists ──
-    if (!isProduction) {
-      const placeholderUrl = `https://placehold.co/1024x1024/1a1a2e/ffffff?text=CONCEPT+ONLY%0A${encodeURIComponent(skuName || "SKU")}`;
-
-      if (supabase) {
-        await supabase.from("ai_generation_logs").insert({
-          task_type: "mockup_preview",
-          model_provider: "stub",
-          model_used: "placeholder",
-          status: "success",
-          collection_id: collectionId || null,
-          metadata: { skuName, skuId, prompt: prompt.slice(0, 200) },
-        });
-      }
-
-      return new Response(
-        JSON.stringify({ imageUrl: placeholderUrl, generationId: "stub", watermark: "CONCEPT ONLY" }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // ── Production path: Leonardo only ──
+    // ── Production path: Leonardo ──
     let jobId: string | null = null;
     if (supabase) {
       const { data: job } = await supabase.from("production_jobs").insert({
@@ -127,8 +144,8 @@ serve(async (req) => {
           .eq("id", jobId);
       }
       return new Response(
-        JSON.stringify({ error: `Leonardo API error: ${createRes.status}`, details: errText }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ ok: false, mode: "production", error: `Leonardo API error: ${createRes.status}`, imageUrl: null }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -139,8 +156,8 @@ serve(async (req) => {
       if (supabase && jobId) {
         await supabase.from("production_jobs").update({ status: "failed", error_message: msg, completed_at: new Date().toISOString() }).eq("id", jobId);
       }
-      return new Response(JSON.stringify({ error: msg }), {
-        status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      return new Response(JSON.stringify({ ok: false, mode: "production", error: msg, imageUrl: null }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -166,8 +183,8 @@ serve(async (req) => {
         if (supabase && jobId) {
           await supabase.from("production_jobs").update({ status: "failed", error_message: msg, completed_at: new Date().toISOString() }).eq("id", jobId);
         }
-        return new Response(JSON.stringify({ error: msg }), {
-          status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        return new Response(JSON.stringify({ ok: false, mode: "production", error: msg, imageUrl: null }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       console.log(`Poll ${i + 1}/${maxAttempts}, status: ${status}`);
@@ -178,8 +195,8 @@ serve(async (req) => {
       if (supabase && jobId) {
         await supabase.from("production_jobs").update({ status: "timeout", error_message: msg, completed_at: new Date().toISOString() }).eq("id", jobId);
       }
-      return new Response(JSON.stringify({ error: msg }), {
-        status: 504, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      return new Response(JSON.stringify({ ok: false, mode: "production", error: msg, imageUrl: null }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -190,14 +207,14 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ imageUrl, generationId, watermark: null }),
+      JSON.stringify({ ok: true, mode: "production", imageUrl, generationId, watermark: null, error: null }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e) {
     console.error("Mockup generation error:", e);
     return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ ok: false, mode: "unknown", error: e instanceof Error ? e.message : "Unknown error", imageUrl: null }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });

@@ -29,6 +29,8 @@ interface ConceptSKU {
   placement: string;
   margin_target: number;
   mockup_brief: string;
+  provider: string;
+  print_type: string;
 }
 
 interface ConceptResult {
@@ -42,6 +44,70 @@ interface ConceptResult {
 }
 
 type PipelineStep = "idea" | "previz" | "production" | "qa";
+
+/* ── Local SVG Concept Card Generator ── */
+function escapeXml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function truncateText(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max) + "…" : s;
+}
+
+function wrapText(text: string, maxChars: number): string[] {
+  const words = text.split(" ");
+  const lines: string[] = [];
+  let current = "";
+  for (const w of words) {
+    if ((current + " " + w).trim().length > maxChars) {
+      if (current) lines.push(current.trim());
+      current = w;
+    } else {
+      current = current ? current + " " + w : w;
+    }
+  }
+  if (current) lines.push(current.trim());
+  return lines.slice(0, 2); // max 2 lines
+}
+
+function generateLocalConceptCard(sku: ConceptSKU, index: number): string {
+  const W = 400;
+  const H = 520;
+  const name = escapeXml(truncateText(sku.name, 24));
+  const providerLabel = escapeXml((sku.provider || "printful").toUpperCase());
+  const printLabel = escapeXml((sku.print_type || "DTG").toUpperCase());
+  const typeLabel = escapeXml(sku.type.toUpperCase());
+  const briefLines = wrapText(sku.mockup_brief || "", 42);
+
+  const bgColors = ["#1A1A1A", "#F4F1EC", "#2C2418", "#1E1E2E"];
+  const fgColors = ["#F4F1EC", "#1A1A1A", "#F4F1EC", "#F4F1EC"];
+  const bg = bgColors[index % bgColors.length];
+  const fg = fgColors[index % fgColors.length];
+  const accent = "#6E4B3A";
+
+  const briefSvg = briefLines.map((line, li) =>
+    `<text x="30" y="${350 + li * 18}" font-family="sans-serif" font-size="12" fill="${fg}" fill-opacity="0.6">${escapeXml(line)}</text>`
+  ).join("\n  ");
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  <rect width="${W}" height="${H}" fill="${bg}" rx="12"/>
+  <rect x="20" y="20" width="${W - 40}" height="3" fill="${accent}" rx="1.5"/>
+  <text x="30" y="60" font-family="sans-serif" font-size="22" font-weight="bold" fill="${fg}">${name}</text>
+  <text x="30" y="90" font-family="sans-serif" font-size="11" fill="${fg}" fill-opacity="0.5" letter-spacing="2">${typeLabel}</text>
+  <rect x="30" y="110" width="130" height="28" rx="4" fill="${accent}" fill-opacity="0.2"/>
+  <text x="95" y="129" text-anchor="middle" font-family="sans-serif" font-size="11" font-weight="bold" fill="${accent}">${providerLabel}</text>
+  <rect x="170" y="110" width="80" height="28" rx="4" fill="${fg}" fill-opacity="0.08"/>
+  <text x="210" y="129" text-anchor="middle" font-family="sans-serif" font-size="11" fill="${fg}" fill-opacity="0.6">${printLabel}</text>
+  <rect x="30" y="160" width="${W - 60}" height="160" rx="8" fill="${fg}" fill-opacity="0.05" stroke="${fg}" stroke-opacity="0.1" stroke-width="1" stroke-dasharray="6 3"/>
+  <text x="${W / 2}" y="230" text-anchor="middle" font-family="sans-serif" font-size="14" fill="${fg}" fill-opacity="0.3">DESIGN ZONE</text>
+  <text x="${W / 2}" y="255" text-anchor="middle" font-family="sans-serif" font-size="10" fill="${fg}" fill-opacity="0.2">Production-ready prompt attached</text>
+  <text x="30" y="340" font-family="sans-serif" font-size="10" fill="${fg}" fill-opacity="0.4" letter-spacing="1">BRIEF</text>
+  ${briefSvg}
+  <text x="${W / 2}" y="${H - 25}" text-anchor="middle" font-family="sans-serif" font-size="18" font-weight="bold" fill="${fg}" fill-opacity="0.15" letter-spacing="4">CONCEPT ONLY</text>
+</svg>`;
+
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
 
 const STEPS: { key: PipelineStep; label: string; icon: typeof Lightbulb; description: string }[] = [
   { key: "idea", label: "A · Idea", icon: Lightbulb, description: "Round Table concept generation" },
@@ -177,32 +243,20 @@ export default function Create() {
     }
   }, [theme, capsuleType, objective, season, toast]);
 
-  /* ── Step B: Generate Previz ── */
-  const handleGeneratePreviz = useCallback(async () => {
+  /* ── Step B: Generate Previz (fully local, no edge function) ── */
+  const handleGeneratePreviz = useCallback(() => {
     if (!concept) return;
     setIsGeneratingPreviz(true);
     try {
       const images: Record<number, string[]> = {};
-      for (let i = 0; i < Math.min(concept.skus.length, 4); i++) {
-        const sku = concept.skus[i];
-        const prompt = `CONCEPT PREVIEW ONLY. ${sku.mockup_brief || ""}`.trim();
-        const skuName = sku.name || `SKU-${i + 1}`;
-        const { data, error } = await supabase.functions.invoke("generate-mockup", {
-          body: {
-            prompt,
-            skuName,
-          },
-        });
-        if (error) throw error;
-        if (data?.imageUrl) {
-          images[i] = [...(images[i] || []), data.imageUrl];
-        }
+      const skusToRender = concept.skus.slice(0, 4);
+      for (let i = 0; i < skusToRender.length; i++) {
+        const sku = skusToRender[i];
+        const svgUrl = generateLocalConceptCard(sku, i);
+        images[i] = [svgUrl];
       }
       setPrevizImages(images);
-      toast({ title: "Previz ready", description: `${Object.keys(images).length} concept mockups generated` });
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "Unknown error";
-      toast({ title: "Previz error", description: message, variant: "destructive" });
+      toast({ title: "Previz ready", description: `${skusToRender.length} concept mockups generated locally` });
     } finally {
       setIsGeneratingPreviz(false);
     }
@@ -419,10 +473,10 @@ function StepIdea({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div>
           <label className="text-[10px] font-body uppercase tracking-wider text-muted-foreground mb-1 block">
-            Theme (optional)
+            Your Idea
           </label>
           <Input
-            placeholder="e.g. Mythological Dads"
+            placeholder="Put your idea here (ex: Aviation & Wonders Founder Drop)"
             value={theme}
             onChange={(e) => setTheme(e.target.value)}
             className="font-body text-sm"
@@ -446,10 +500,10 @@ function StepIdea({
         </div>
         <div>
           <label className="text-[10px] font-body uppercase tracking-wider text-muted-foreground mb-1 block">
-            Objective
+            Launch Intent
           </label>
           <Input
-            placeholder="e.g. Father's Day drop"
+            placeholder="Launch intent (ex: Founder Drop 150 units, cash-positive)"
             value={objective}
             onChange={(e) => setObjective(e.target.value)}
             className="font-body text-sm"
