@@ -381,6 +381,7 @@ function StepIdea({
 }) {
   const { toast } = useToast();
   const [capUpsellSelected, setCapUpsellSelected] = useState(false);
+  const [bundleSelected, setBundleSelected] = useState(false);
   return (
     <div className="space-y-4">
       <div>
@@ -462,14 +463,43 @@ function StepIdea({
                     </p>
                   </CardHeader>
                   <CardContent className="pb-4 space-y-3">
-                    <div className="flex items-baseline gap-3">
-                      <span className="text-sm text-muted-foreground font-body line-through">{combinedPrice} CAD</span>
-                      <span className="text-2xl font-display font-light text-foreground">{bundlePrice} CAD</span>
+                    {/* Live Order Total Summary */}
+                    <div className="border border-border rounded-md p-3 bg-background space-y-1.5">
+                      <p className="text-[9px] font-body uppercase tracking-[0.12em] text-muted-foreground mb-2">Order Summary</p>
+                      <div className="flex justify-between text-xs font-body text-foreground">
+                        <span>Parent Tee</span>
+                        <span>{tee?.retail_cad ?? 0} CAD</span>
+                      </div>
+                      <div className="flex justify-between text-xs font-body text-foreground">
+                        <span>Kid AOP Set</span>
+                        <span>{kid?.retail_cad ?? 0} CAD</span>
+                      </div>
+                      {capUpsellSelected && (
+                        <div className="flex justify-between text-xs font-body text-foreground">
+                          <span>Parent Cap</span>
+                          <span>{capPrice} CAD</span>
+                        </div>
+                      )}
+                      <div className="border-t border-border my-1.5" />
+                      <div className="flex justify-between text-xs font-body text-muted-foreground">
+                        <span>Subtotal</span>
+                        <span>{combinedPrice} CAD</span>
+                      </div>
+                      <div className="flex justify-between text-xs font-body font-medium text-foreground">
+                        <span>Bundle price</span>
+                        <span>{bundlePrice} CAD</span>
+                      </div>
+                      <div className="flex justify-between text-xs font-body text-primary">
+                        <span>You save</span>
+                        <span>−{savings} CAD</span>
+                      </div>
                     </div>
-                    <p className="text-[10px] text-muted-foreground font-body">Save {savings} CAD with the bundle</p>
+
                     <Button
-                      className="mt-3 w-full font-body text-xs tracking-[0.15em] uppercase h-10"
+                      className="mt-1 w-full font-body text-xs tracking-[0.15em] uppercase h-10"
+                      disabled={bundleSelected || !result.finance.passed}
                       onClick={() => {
+                        setBundleSelected(true);
                         toast({
                           title: "Bundle",
                           description: capUpsellSelected
@@ -478,7 +508,11 @@ function StepIdea({
                         });
                       }}
                     >
-                      Shop Founder Bundle
+                      {bundleSelected
+                        ? "Bundle Selected ✓"
+                        : !result.finance.passed
+                        ? "Fix Finance Gate to unlock bundle"
+                        : "Shop Founder Bundle"}
                     </Button>
                     <p className="text-[9px] text-muted-foreground font-body text-center mt-1">
                       You'll be able to edit quantities at checkout.
