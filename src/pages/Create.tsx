@@ -380,6 +380,7 @@ function StepIdea({
   result: FounderDropResult | null;
 }) {
   const { toast } = useToast();
+  const [capUpsellSelected, setCapUpsellSelected] = useState(false);
   return (
     <div className="space-y-4">
       <div>
@@ -438,7 +439,11 @@ function StepIdea({
             const tee = result.skus.find(s => s.name.toLowerCase().includes("tee"));
             const kid = result.skus.find(s => s.name.toLowerCase().includes("kid") || s.name.toLowerCase().includes("aop"));
             const cap = result.skus.find(s => s.name.toLowerCase().includes("cap"));
-            const combinedPrice = (tee?.retail_cad ?? 0) + (kid?.retail_cad ?? 0);
+            const capPrice = cap?.retail_cad ?? 0;
+            const baseCombinedPrice = (tee?.retail_cad ?? 0) + (kid?.retail_cad ?? 0);
+            const combinedPrice = baseCombinedPrice + (capUpsellSelected ? capPrice : 0);
+            const bundlePrice = Math.round(combinedPrice * 0.85);
+            const savings = combinedPrice - bundlePrice;
             return (
               <div className="space-y-3">
                 <Card className="border-2 border-accent bg-accent/5 relative overflow-hidden">
@@ -452,34 +457,60 @@ function StepIdea({
                       <Gift className="h-4 w-4 text-accent" />
                       Founder Bundle
                     </CardTitle>
-                    <p className="text-xs text-muted-foreground font-body">Parent Tee + Kid AOP Set</p>
+                    <p className="text-xs text-muted-foreground font-body">
+                      Parent Tee + Kid AOP Set{capUpsellSelected ? " + Cap" : ""}
+                    </p>
                   </CardHeader>
                   <CardContent className="pb-4 space-y-3">
                     <div className="flex items-baseline gap-3">
                       <span className="text-sm text-muted-foreground font-body line-through">{combinedPrice} CAD</span>
-                      <span className="text-2xl font-display font-light text-foreground">{result.finance.bundle_price_cad} CAD</span>
+                      <span className="text-2xl font-display font-light text-foreground">{bundlePrice} CAD</span>
                     </div>
-                    <p className="text-[10px] text-muted-foreground font-body">Save {combinedPrice - result.finance.bundle_price_cad} CAD with the bundle</p>
+                    <p className="text-[10px] text-muted-foreground font-body">Save {savings} CAD with the bundle</p>
                     <Button
                       className="mt-3 w-full font-body text-xs tracking-[0.15em] uppercase h-10"
                       onClick={() => {
-                        toast({ title: "Bundle", description: "Founder Bundle selected" });
+                        toast({
+                          title: "Bundle",
+                          description: capUpsellSelected
+                            ? "Founder Bundle + Cap selected"
+                            : "Founder Bundle selected",
+                        });
                       }}
                     >
                       Shop Founder Bundle
                     </Button>
+                    <p className="text-[9px] text-muted-foreground font-body text-center mt-1">
+                      You'll be able to edit quantities at checkout.
+                    </p>
                   </CardContent>
                 </Card>
 
                 {cap && (
                   <div className="border border-border rounded-lg p-3 bg-muted/20 flex items-center justify-between">
                     <div>
-                      <p className="text-xs font-body font-medium text-foreground">Add the Parent Cap</p>
+                      <p className="text-xs font-body font-medium text-foreground">
+                        {capUpsellSelected ? "Cap added ✓" : "Add the Parent Cap"}
+                      </p>
                       <p className="text-[10px] text-muted-foreground font-body">Complete the look.</p>
                     </div>
-                    <Button variant="outline" size="sm" className="font-body text-[10px] tracking-[0.1em] uppercase h-8 shrink-0">
+                    <Button
+                      variant={capUpsellSelected ? "secondary" : "outline"}
+                      size="sm"
+                      className="font-body text-[10px] tracking-[0.1em] uppercase h-8 shrink-0"
+                      onClick={() => {
+                        const next = !capUpsellSelected;
+                        setCapUpsellSelected(next);
+                        toast({
+                          title: next ? "Cap added" : "Cap removed",
+                          description: next
+                            ? `+${capPrice} CAD added to bundle`
+                            : "Cap removed from bundle",
+                        });
+                      }}
+                    >
                       <Plus className="h-3 w-3 mr-1" />
-                      Add Cap (+{cap.retail_cad} CAD)
+                      {capUpsellSelected ? "Remove Cap" : `Add Cap (+${capPrice} CAD)`}
                     </Button>
                   </div>
                 )}
