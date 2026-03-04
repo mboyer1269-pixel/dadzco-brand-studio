@@ -453,12 +453,16 @@ function StepIdea({
                     </CardTitle>
                     <p className="text-xs text-muted-foreground font-body">Parent Tee + Kid AOP Set</p>
                   </CardHeader>
-                  <CardContent className="pb-4">
+                  <CardContent className="pb-4 space-y-3">
                     <div className="flex items-baseline gap-3">
                       <span className="text-sm text-muted-foreground font-body line-through">{combinedPrice} CAD</span>
                       <span className="text-2xl font-display font-light text-foreground">{result.finance.bundle_price_cad} CAD</span>
                     </div>
-                    <p className="text-[10px] text-muted-foreground font-body mt-1">Save {combinedPrice - result.finance.bundle_price_cad} CAD with the bundle</p>
+                    <p className="text-[10px] text-muted-foreground font-body">Save {combinedPrice - result.finance.bundle_price_cad} CAD with the bundle</p>
+                    <Button size="sm" className="w-full font-body text-[10px] tracking-[0.1em] uppercase h-9">
+                      <Gift className="h-3 w-3 mr-1.5" />
+                      Shop Founder Bundle
+                    </Button>
                   </CardContent>
                 </Card>
 
@@ -477,6 +481,8 @@ function StepIdea({
               </div>
             );
           })()}
+
+          <p className="text-[10px] text-muted-foreground font-body tracking-[0.1em] uppercase text-center">Or shop items individually</p>
 
           <div className="grid grid-cols-2 gap-2">
             {result.skus.map((sku, i) => (
