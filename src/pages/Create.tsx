@@ -379,6 +379,7 @@ function StepIdea({
   onGenerate: () => void;
   result: FounderDropResult | null;
 }) {
+  const { toast } = useToast();
   return (
     <div className="space-y-4">
       <div>
@@ -459,8 +460,12 @@ function StepIdea({
                       <span className="text-2xl font-display font-light text-foreground">{result.finance.bundle_price_cad} CAD</span>
                     </div>
                     <p className="text-[10px] text-muted-foreground font-body">Save {combinedPrice - result.finance.bundle_price_cad} CAD with the bundle</p>
-                    <Button size="sm" className="w-full font-body text-[10px] tracking-[0.1em] uppercase h-9">
-                      <Gift className="h-3 w-3 mr-1.5" />
+                    <Button
+                      className="mt-3 w-full font-body text-xs tracking-[0.15em] uppercase h-10"
+                      onClick={() => {
+                        toast({ title: "Bundle", description: "Founder Bundle selected" });
+                      }}
+                    >
                       Shop Founder Bundle
                     </Button>
                   </CardContent>
@@ -482,7 +487,7 @@ function StepIdea({
             );
           })()}
 
-          <p className="text-[10px] text-muted-foreground font-body tracking-[0.1em] uppercase text-center">Or shop items individually</p>
+          <p className="text-[10px] font-body uppercase tracking-wider text-muted-foreground">Or shop items individually</p>
 
           <div className="grid grid-cols-2 gap-2">
             {result.skus.map((sku, i) => (
