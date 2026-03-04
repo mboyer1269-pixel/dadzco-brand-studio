@@ -219,7 +219,8 @@ export default function Create() {
           <div className="flex items-center gap-3 mb-2">
             <Package className="h-6 w-6 text-foreground" />
             <h1 className="font-display text-3xl font-light text-foreground tracking-wide">Founder Drop</h1>
-            <Badge variant="outline" className="text-[9px] font-body tracking-[0.12em] uppercase border-accent text-accent ml-1">
+            <Badge variant="outline" className="inline-flex items-center gap-1.5 text-[9px] font-body tracking-[0.12em] uppercase border-accent text-accent ml-1">
+              <Lock className="h-3 w-3" />
               Aviation &amp; Wonders · V1
             </Badge>
           </div>
