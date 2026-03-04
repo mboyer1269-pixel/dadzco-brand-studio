@@ -21,6 +21,8 @@ import {
   DollarSign,
   Zap,
   Settings2,
+  Plus,
+  Gift,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -429,6 +431,52 @@ function StepIdea({
               Finance: {result.finance.passed ? "PASS ✓" : "FAIL ✗"}
             </Badge>
           </div>
+
+          {/* — Bundle Primary Offer — */}
+          {(() => {
+            const tee = result.skus.find(s => s.name.toLowerCase().includes("tee"));
+            const kid = result.skus.find(s => s.name.toLowerCase().includes("kid") || s.name.toLowerCase().includes("aop"));
+            const cap = result.skus.find(s => s.name.toLowerCase().includes("cap"));
+            const combinedPrice = (tee?.retail_cad ?? 0) + (kid?.retail_cad ?? 0);
+            return (
+              <div className="space-y-3">
+                <Card className="border-2 border-accent bg-accent/5 relative overflow-hidden">
+                  <div className="absolute top-0 right-0">
+                    <Badge className="rounded-none rounded-bl-md text-[9px] font-body tracking-[0.1em] uppercase">
+                      Best Value
+                    </Badge>
+                  </div>
+                  <CardHeader className="pb-2 pt-4">
+                    <CardTitle className="font-display text-lg font-light text-foreground flex items-center gap-2">
+                      <Gift className="h-4 w-4 text-accent" />
+                      Founder Bundle
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground font-body">Parent Tee + Kid AOP Set</p>
+                  </CardHeader>
+                  <CardContent className="pb-4">
+                    <div className="flex items-baseline gap-3">
+                      <span className="text-sm text-muted-foreground font-body line-through">{combinedPrice} CAD</span>
+                      <span className="text-2xl font-display font-light text-foreground">{result.finance.bundle_price_cad} CAD</span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground font-body mt-1">Save {combinedPrice - result.finance.bundle_price_cad} CAD with the bundle</p>
+                  </CardContent>
+                </Card>
+
+                {cap && (
+                  <div className="border border-border rounded-lg p-3 bg-muted/20 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-body font-medium text-foreground">Add the Parent Cap</p>
+                      <p className="text-[10px] text-muted-foreground font-body">Complete the look.</p>
+                    </div>
+                    <Button variant="outline" size="sm" className="font-body text-[10px] tracking-[0.1em] uppercase h-8 shrink-0">
+                      <Plus className="h-3 w-3 mr-1" />
+                      Add Cap (+{cap.retail_cad} CAD)
+                    </Button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           <div className="grid grid-cols-2 gap-2">
             {result.skus.map((sku, i) => (
