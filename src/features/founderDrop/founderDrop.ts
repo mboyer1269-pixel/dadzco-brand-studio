@@ -55,7 +55,7 @@ function enforceMargin(cost: number, retail: number): { retail_cad: number; marg
 }
 
 export function buildFounderSKUs(idea: string): FounderSKU[] {
-  const theme = idea || "Aviation & Wonders";
+  const theme = "Aviation & Wonders";
   const neg = BRAND_DNA.forbidden_elements.join(", ");
 
   const tee = enforceMargin(14, 42);

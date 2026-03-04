@@ -88,7 +88,7 @@ export default function Create() {
 
       const dropResult: FounderDropResult = {
         name: packName,
-        theme: idea.trim() || "Aviation & Wonders",
+        theme: "Aviation & Wonders",
         season: "Evergreen",
         pack_type: "founder_drop",
         skus,
@@ -376,15 +376,15 @@ function StepIdea({
   return (
     <div className="space-y-4">
       <div>
-        <label className="text-[10px] font-body uppercase tracking-wider text-muted-foreground mb-1 block">IDEA (optional)</label>
+        <label className="text-[10px] font-body uppercase tracking-wider text-muted-foreground mb-1 block">DROP NAME (optional)</label>
         <Input
-          placeholder="Aviation & Wonders"
+          placeholder="Founder Drop — March"
           value={idea}
           onChange={(e) => setIdea(e.target.value)}
           className="font-body text-sm h-12"
         />
         <p className="text-[10px] text-muted-foreground font-body mt-1">
-          Leave empty for default theme. System auto-generates 4 MVP SKUs with full routing + pricing.
+          Optional internal label. The collection theme remains "Aviation & Wonders" for the V1 Founder Drop.
         </p>
       </div>
 
