@@ -1,0 +1,21 @@
+{
+  "name": "DADZCO · Brand OS",
+  "short_name": "DADZCO",
+  "description": "Système opérationnel de marque DADZCO",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F7F2E8",
+  "theme_color": "#0B1B2B",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any"
+    },
+    {
+      "src": "/favicon.ico",
+      "type": "image/x-icon",
+      "sizes": "256x256"
+    }
+  ]
+}

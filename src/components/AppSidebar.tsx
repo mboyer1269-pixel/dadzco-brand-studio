@@ -100,7 +100,7 @@ export function AppSidebar() {
           )}
           {!collapsed && (
             <span className="text-xs">
-              {theme === "light" ? "Dark mode" : "Light mode"}
+              {theme === "light" ? "Mode sombre" : "Mode clair"}
             </span>
           )}
         </Button>
@@ -111,7 +111,7 @@ export function AppSidebar() {
           className="w-full justify-start gap-3 text-muted-foreground font-body"
         >
           <LogOut className="h-4 w-4" />
-          {!collapsed && <span className="text-xs">Sign out</span>}
+          {!collapsed && <span className="text-xs">Déconnexion</span>}
         </Button>
       </SidebarFooter>
     </Sidebar>
