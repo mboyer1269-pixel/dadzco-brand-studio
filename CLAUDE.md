@@ -237,9 +237,9 @@ Unless asked otherwise:
 
 Step 1 — Status stabilization     ✅ Complete (migrations A + B + code fixes)
 Step 2 — Export domain            ✅ Complete (migration C + health check fix)
-Step 3 — 3 Seals                  ⏳ Next
-Step 4 — Collection detail page   ⬜ Pending
-Step 5 — QR V1                    ⬜ Pending
+Step 3 — 3 Seals                  ✅ Complete (migration D + lifecycle-gate seal check + events write)
+Step 4 — Collection detail page   ✅ Complete (/collections/:id, 486 lines, tabs layout)
+Step 5 — QR V1                    ⏳ Next
 Step 6 — Founder's Vault V1       ⬜ Pending
 ```
 
