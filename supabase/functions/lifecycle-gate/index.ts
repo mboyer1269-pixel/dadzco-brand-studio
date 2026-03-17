@@ -91,6 +91,26 @@ async function checkGates(
         ? `Score final: ${latestScore.final_score}/100`
         : "La collection n'a pas encore été scorée",
     });
+
+    // Seal gate: all 3 seals must be approved before production
+    const { data: seals } = await supabase
+      .from("collection_seals")
+      .select("seal_type, status")
+      .eq("collection_id", collectionId);
+
+    const REQUIRED_SEALS = ["brand_dna", "finance_gate", "production_ready"];
+    const approvedSeals = (seals || [])
+      .filter((s) => s.status === "approved")
+      .map((s) => s.seal_type);
+    const missingSeals = REQUIRED_SEALS.filter((t) => !approvedSeals.includes(t));
+
+    results.push({
+      passed: missingSeals.length === 0,
+      gate: "seals_approved",
+      message: missingSeals.length === 0
+        ? "Les 3 sceaux sont approuvés"
+        : `Sceaux manquants: ${missingSeals.join(", ")}`,
+    });
   }
 
   if (targetStatus === "ready_for_export") {
@@ -231,6 +251,17 @@ serve(async (req) => {
       .eq("id", collectionId);
 
     if (updateErr) throw new Error(`Failed to update status: ${updateErr.message}`);
+
+    // Persist lifecycle event to audit trail
+    await supabase.from("collection_events").insert({
+      collection_id: collectionId,
+      event_type: "lifecycle_transition",
+      from_status: currentStatus,
+      to_status: targetStatus,
+      gate_results: gateResults,
+      forced: force && !allPassed,
+      user_id: null, // V1: no user context propagated from auth check yet
+    });
 
     console.log(`[Lifecycle] ${collectionId}: ${currentStatus} → ${targetStatus}`);
 
