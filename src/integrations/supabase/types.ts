@@ -1043,6 +1043,127 @@ export type Database = {
         }
         Relationships: []
       }
+      vault_configs: {
+        Row: {
+          collection_id: string
+          created_at: string
+          id: string
+          is_active: boolean
+          purchase_threshold: number
+          reward_sku_ref: string | null
+          updated_at: string
+        }
+        Insert: {
+          collection_id: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          purchase_threshold?: number
+          reward_sku_ref?: string | null
+          updated_at?: string
+        }
+        Update: {
+          collection_id?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          purchase_threshold?: number
+          reward_sku_ref?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vault_configs_collection_id_fkey"
+            columns: ["collection_id"]
+            isOneToOne: true
+            referencedRelation: "collections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vault_purchases: {
+        Row: {
+          amount_cad: number | null
+          collection_id: string
+          counted_for_vault: boolean
+          created_at: string
+          customer_id: string
+          id: string
+          sku_ref: string | null
+          vault_config_id: string
+        }
+        Insert: {
+          amount_cad?: number | null
+          collection_id: string
+          counted_for_vault?: boolean
+          created_at?: string
+          customer_id: string
+          id?: string
+          sku_ref?: string | null
+          vault_config_id: string
+        }
+        Update: {
+          amount_cad?: number | null
+          collection_id?: string
+          counted_for_vault?: boolean
+          created_at?: string
+          customer_id?: string
+          id?: string
+          sku_ref?: string | null
+          vault_config_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vault_purchases_collection_id_fkey"
+            columns: ["collection_id"]
+            isOneToOne: false
+            referencedRelation: "collections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vault_purchases_vault_config_id_fkey"
+            columns: ["vault_config_id"]
+            isOneToOne: false
+            referencedRelation: "vault_configs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vault_redemptions: {
+        Row: {
+          created_at: string
+          customer_id: string
+          id: string
+          redeemed_at: string
+          redemption_ref: string | null
+          vault_config_id: string
+        }
+        Insert: {
+          created_at?: string
+          customer_id: string
+          id?: string
+          redeemed_at?: string
+          redemption_ref?: string | null
+          vault_config_id: string
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string
+          id?: string
+          redeemed_at?: string
+          redemption_ref?: string | null
+          vault_config_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vault_redemptions_vault_config_id_fkey"
+            columns: ["vault_config_id"]
+            isOneToOne: false
+            referencedRelation: "vault_configs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
