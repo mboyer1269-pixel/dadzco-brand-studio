@@ -138,7 +138,6 @@ serve(async (req) => {
     const hasNegativeProfit = items.some((i: any) => Number(i.retail_price) <= Number(i.cost));
     const updateData: Record<string, unknown> = {
       lifecycle_status: "approved_for_production",
-      status: "approved_for_production",
       margin_validated: true,
     };
     if (!hasNegativeProfit && avgMargin >= 55) {

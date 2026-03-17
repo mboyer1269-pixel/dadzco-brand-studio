@@ -45,7 +45,6 @@ serve(async (req) => {
         name: collection.name,
         description: collection.theme,
         season: collection.season || null,
-        status: collection.finance_gate?.passed ? "draft" : "blocked",
         lifecycle_status: collection.finance_gate?.passed ? "idea" : "idea",
         user_id: adminUserId,
         metadata: {

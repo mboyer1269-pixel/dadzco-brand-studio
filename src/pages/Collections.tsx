@@ -92,8 +92,8 @@ const Collections = () => {
                             Round Table
                           </Badge>
                         )}
-                        <Badge variant={c.status === "draft" ? "secondary" : "default"} className="text-[9px] font-body uppercase">
-                          {c.status}
+                        <Badge variant={c.lifecycle_status === "idea" ? "secondary" : "default"} className="text-[9px] font-body uppercase">
+                          {c.lifecycle_status}
                         </Badge>
                       </div>
                     </div>
