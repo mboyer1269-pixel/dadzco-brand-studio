@@ -81,7 +81,8 @@ const Collections = () => {
               const meta = c.metadata as any;
               const isRoundTable = meta?.source === "round_table";
               return (
-                <Card key={c.id} className="border-border card-lift gradient-card-warm">
+                <Link key={c.id} to={`/collections/${c.id}`} className="block">
+                <Card className="border-border card-lift gradient-card-warm h-full">
                   <CardContent className="p-5">
                     <div className="flex items-start justify-between mb-3">
                       <h3 className="font-display text-lg font-light text-foreground">{c.name}</h3>
@@ -140,6 +141,7 @@ const Collections = () => {
                     </p>
                   </CardContent>
                 </Card>
+                </Link>
               );
             })}
           </div>
