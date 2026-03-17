@@ -79,7 +79,7 @@ export function UltraReliableChecklist() {
       icon: Download,
       test: async () => {
         const { error } = await supabase
-          .from("exports")
+          .from("export_packs")
           .select("id")
           .limit(1);
         return !error;
