@@ -232,6 +232,15 @@ Unless asked otherwise:
        — what we just did
        — what it means
        — what you should do next
+
+## Implementation status
+
+Step 1 — Status stabilization     ✅ Complete (migrations A + B + code fixes)
+Step 2 — Export domain            ✅ Complete (migration C + health check fix)
+Step 3 — 3 Seals                  ⏳ Next
+Step 4 — Collection detail page   ⬜ Pending
+Step 5 — QR V1                    ⬜ Pending
+Step 6 — Founder's Vault V1       ⬜ Pending
 ```
 
 ---
