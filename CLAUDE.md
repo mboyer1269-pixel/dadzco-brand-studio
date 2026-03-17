@@ -239,7 +239,7 @@ Step 1 — Status stabilization     ✅ Complete (migrations A + B + code fixes)
 Step 2 — Export domain            ✅ Complete (migration C + health check fix)
 Step 3 — 3 Seals                  ✅ Complete (migration D + lifecycle-gate seal check + events write)
 Step 4 — Collection detail page   ✅ Complete (/collections/:id, 486 lines, tabs layout)
-Step 5 — QR V1                    ⏳ Next
+Step 5 — QR V1                    ✅ Complete (migration E + F, qr_codes + qr_scans)
 Step 6 — Founder's Vault V1       ⬜ Pending
 ```
 

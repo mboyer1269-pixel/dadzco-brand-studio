@@ -785,6 +785,82 @@ export type Database = {
           },
         ]
       }
+      qr_codes: {
+        Row: {
+          collection_id: string
+          created_at: string
+          id: string
+          is_active: boolean
+          product_id: string | null
+          qr_type: string
+          scan_count: number
+          short_code: string
+          updated_at: string
+        }
+        Insert: {
+          collection_id: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          product_id?: string | null
+          qr_type?: string
+          scan_count?: number
+          short_code: string
+          updated_at?: string
+        }
+        Update: {
+          collection_id?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          product_id?: string | null
+          qr_type?: string
+          scan_count?: number
+          short_code?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qr_codes_collection_id_fkey"
+            columns: ["collection_id"]
+            isOneToOne: false
+            referencedRelation: "collections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      qr_scans: {
+        Row: {
+          id: string
+          ip_hash: string | null
+          qr_code_id: string
+          scanned_at: string
+          user_agent: string | null
+        }
+        Insert: {
+          id?: string
+          ip_hash?: string | null
+          qr_code_id: string
+          scanned_at?: string
+          user_agent?: string | null
+        }
+        Update: {
+          id?: string
+          ip_hash?: string | null
+          qr_code_id?: string
+          scanned_at?: string
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qr_scans_qr_code_id_fkey"
+            columns: ["qr_code_id"]
+            isOneToOne: false
+            referencedRelation: "qr_codes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       seal_audit_log: {
         Row: {
           action: string
