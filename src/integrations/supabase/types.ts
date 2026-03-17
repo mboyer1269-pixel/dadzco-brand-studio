@@ -338,6 +338,47 @@ export type Database = {
           },
         ]
       }
+      collection_seals: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          collection_id: string
+          created_at: string
+          id: string
+          notes: string | null
+          seal_type: string
+          status: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          collection_id: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          seal_type: string
+          status?: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          collection_id?: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          seal_type?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "collection_seals_collection_id_fkey"
+            columns: ["collection_id"]
+            isOneToOne: false
+            referencedRelation: "collections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       collections: {
         Row: {
           adn_score: number | null
@@ -737,6 +778,44 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "production_jobs_collection_id_fkey"
+            columns: ["collection_id"]
+            isOneToOne: false
+            referencedRelation: "collections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      seal_audit_log: {
+        Row: {
+          action: string
+          actor_id: string | null
+          collection_id: string
+          created_at: string
+          id: string
+          reason: string | null
+          seal_type: string
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          collection_id: string
+          created_at?: string
+          id?: string
+          reason?: string | null
+          seal_type: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          collection_id?: string
+          created_at?: string
+          id?: string
+          reason?: string | null
+          seal_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "seal_audit_log_collection_id_fkey"
             columns: ["collection_id"]
             isOneToOne: false
             referencedRelation: "collections"
