@@ -12,6 +12,7 @@ import Login from "./pages/Login";
 import BrandBook from "./pages/BrandBook";
 import Create from "./pages/Create";
 import Collections from "./pages/Collections";
+import CollectionDetail from "./pages/CollectionDetail";
 import Launch from "./pages/Launch";
 import SettingsPage from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound";
@@ -75,6 +76,7 @@ const App = () => (
               <Route path="/create" element={<ProtectedRoute><Create /></ProtectedRoute>} />
               <Route path="/collections" element={<ProtectedRoute><Collections /></ProtectedRoute>} />
               <Route path="/collections/new" element={<ProtectedRoute><CollectionWizard /></ProtectedRoute>} />
+              <Route path="/collections/:id" element={<ProtectedRoute><CollectionDetail /></ProtectedRoute>} />
               <Route path="/financial" element={<ProtectedRoute><FinancialEngine /></ProtectedRoute>} />
               <Route path="/launch" element={<ProtectedRoute><Launch /></ProtectedRoute>} />
               <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
