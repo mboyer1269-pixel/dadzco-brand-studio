@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { QRCodeSVG } from "qrcode.react";
 import { AppLayout } from "@/components/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +13,7 @@ import type { Tables } from "@/integrations/supabase/types";
 import {
   ArrowLeft, Package, Star, ShieldCheck, Clock,
   CheckCircle2, XCircle, Minus, TrendingUp, AlertTriangle, Loader2,
-  ChevronRight, ChevronLeft,
+  ChevronRight, ChevronLeft, QrCode,
 } from "lucide-react";
 
 type CollectionRow = Tables<"collections">;
@@ -22,6 +23,7 @@ type CollectionItem = Tables<"collection_items"> & {
 type CollectionScore = Tables<"collection_scores">;
 type CollectionSeal = Tables<"collection_seals">;
 type CollectionEvent = Tables<"collection_events">;
+type QrCodeRow = Tables<"qr_codes">;
 
 const SEAL_LABELS: Record<string, string> = {
   brand_dna: "Brand DNA",
@@ -108,6 +110,9 @@ const CollectionDetail = () => {
   const [lifecyclePending, setLifecyclePending] = useState(false);
   const [lifecycleError, setLifecycleError] = useState<string | null>(null);
   const [gateResults, setGateResults] = useState<GateResult[]>([]);
+  const [qrCode, setQrCode] = useState<QrCodeRow | null>(null);
+  const [qrPending, setQrPending] = useState(false);
+  const [qrError, setQrError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -118,6 +123,7 @@ const CollectionDetail = () => {
         { data: scoreRows },
         { data: sealRows },
         { data: eventRows },
+        { data: qrRow },
       ] = await Promise.all([
         supabase.from("collections").select("*").eq("id", id).single(),
         supabase
@@ -138,6 +144,13 @@ const CollectionDetail = () => {
           .eq("collection_id", id)
           .order("created_at", { ascending: false })
           .limit(20),
+        supabase
+          .from("qr_codes")
+          .select("*")
+          .eq("collection_id", id)
+          .eq("qr_type", "collection_link")
+          .eq("is_active", true)
+          .maybeSingle(),
       ]);
 
       if (!col) {
@@ -150,6 +163,7 @@ const CollectionDetail = () => {
       setScore(scoreRows?.[0] ?? null);
       setSeals(sealRows || []);
       setEvents(eventRows || []);
+      setQrCode(qrRow ?? null);
 
       // Admin check — used only to show/hide action buttons.
       // The Edge Function enforces the real admin guard server-side.
@@ -226,6 +240,21 @@ const CollectionDetail = () => {
       setGateResults(data.gates ?? []);
     }
     setLifecyclePending(false);
+  };
+
+  const handleGenerateQr = async () => {
+    setQrPending(true);
+    setQrError(null);
+    const targetUrl = `${window.location.origin}/collections/${id}`;
+    const { data, error } = await supabase.functions.invoke("generate-qr", {
+      body: { collection_id: id, target_url: targetUrl },
+    });
+    if (error || data?.error) {
+      setQrError(data?.error ?? error?.message ?? "Failed to generate QR");
+    } else if (data?.qr_code) {
+      setQrCode(data.qr_code);
+    }
+    setQrPending(false);
   };
 
   if (loading) {
@@ -360,6 +389,9 @@ const CollectionDetail = () => {
             </TabsTrigger>
             <TabsTrigger value="events" className="font-body text-xs">
               History ({events.length})
+            </TabsTrigger>
+            <TabsTrigger value="qr" className="font-body text-xs">
+              QR{qrCode ? " · ✓" : ""}
             </TabsTrigger>
           </TabsList>
 
@@ -688,6 +720,63 @@ const CollectionDetail = () => {
                     </div>
                   );
                 })()}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* QR ─────────────────────────────────────────────────── */}
+          <TabsContent value="qr">
+            <Card className="border-border">
+              <CardHeader className="pb-3">
+                <CardTitle className="font-display text-base font-light flex items-center gap-2">
+                  <QrCode className="h-4 w-4" />
+                  QR Code
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {!qrCode ? (
+                  <div className="py-8 text-center space-y-3">
+                    <p className="text-sm font-body text-muted-foreground">
+                      No QR code generated yet.
+                    </p>
+                    {isAdmin && (
+                      <Button
+                        size="sm"
+                        className="text-[10px] font-body h-8 px-3"
+                        disabled={qrPending}
+                        onClick={handleGenerateQr}
+                      >
+                        {qrPending ? (
+                          <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
+                        ) : (
+                          <QrCode className="h-3 w-3 mr-1.5" />
+                        )}
+                        Generate QR
+                      </Button>
+                    )}
+                    {qrError && (
+                      <p className="text-[10px] text-destructive font-body">{qrError}</p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-4 py-4">
+                    <QRCodeSVG
+                      value={`${window.location.origin}/collections/${id}`}
+                      size={160}
+                      bgColor="#ffffff"
+                      fgColor="#000000"
+                      level="M"
+                    />
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary" className="text-[9px] font-body font-mono uppercase">
+                        {qrCode.short_code}
+                      </Badge>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground font-body text-center max-w-xs break-all">
+                      {`${window.location.origin}/collections/${id}`}
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
