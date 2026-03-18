@@ -115,6 +115,19 @@ Never mix domains 5 and 6.
   Enforced by CHECK constraint + lifecycle-gate Edge Function.
 - collections.status is DEPRECATED — maintained by a sync trigger
   from lifecycle_status. Do not write to it directly.
+
+## collections status field — important notes
+- lifecycle_status is the ONLY canonical collection progression field.
+  All lifecycle gate logic reads and writes lifecycle_status only.
+- status is a DEPRECATED legacy shadow field.
+  It is maintained automatically by the sync_collection_status trigger.
+  Never write status directly from application code or Edge Functions.
+- The shadow CHECK constraint allows four values:
+  draft | in_progress | completed | archived
+  'archived' is an intentional reserved shadow value for a future
+  soft-archive path. It is not currently produced by any trigger branch.
+  Do not remove it. Do not build logic against it until explicitly planned.
+
 - lifecycle-gate Edge Function enforces valid transitions and gates.
 - approve-hq Edge Function enforces margin, ADN, scoring, and
   brand_rules_locked gates before approving for production.
