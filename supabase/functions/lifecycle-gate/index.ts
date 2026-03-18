@@ -190,11 +190,26 @@ serve(async (req) => {
   }
 
   try {
-    await authenticateRequest(req);
+    const userId = await authenticateRequest(req);
 
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+
+    // ── Admin role check (same pattern as manage-seal) ───────────
+    const { data: roleRow } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId)
+      .eq("role", "admin")
+      .maybeSingle();
+
+    if (!roleRow) {
+      return new Response(
+        JSON.stringify({ error: "Forbidden — admin role required" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     const { collectionId, targetStatus, force } = await req.json();
     if (!collectionId || !targetStatus) {
@@ -260,7 +275,7 @@ serve(async (req) => {
       to_status: targetStatus,
       gate_results: gateResults,
       forced: force && !allPassed,
-      user_id: null, // V1: no user context propagated from auth check yet
+      user_id: userId,
     });
 
     console.log(`[Lifecycle] ${collectionId}: ${currentStatus} → ${targetStatus}`);

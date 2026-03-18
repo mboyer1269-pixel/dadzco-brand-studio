@@ -12,6 +12,7 @@ import type { Tables } from "@/integrations/supabase/types";
 import {
   ArrowLeft, Package, Star, ShieldCheck, Clock,
   CheckCircle2, XCircle, Minus, TrendingUp, AlertTriangle, Loader2,
+  ChevronRight, ChevronLeft,
 } from "lucide-react";
 
 type CollectionRow = Tables<"collections">;
@@ -29,6 +30,35 @@ const SEAL_LABELS: Record<string, string> = {
 };
 
 const REQUIRED_SEALS = ["brand_dna", "finance_gate", "production_ready"];
+
+// ─── Lifecycle transition map (mirrors lifecycle-gate Edge Function) ──
+const VALID_TRANSITIONS: Record<string, string[]> = {
+  idea: ["strategy_review"],
+  strategy_review: ["mockup_stage", "idea"],
+  mockup_stage: ["approved_for_production", "strategy_review"],
+  approved_for_production: ["in_production", "mockup_stage"],
+  in_production: ["ready_for_export", "approved_for_production"],
+  ready_for_export: ["exported", "in_production"],
+  exported: [],
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  idea: "Idea",
+  strategy_review: "Strategy Review",
+  mockup_stage: "Mockup Stage",
+  approved_for_production: "Approved for Production",
+  in_production: "In Production",
+  ready_for_export: "Ready for Export",
+  exported: "Exported",
+};
+
+interface GateResult {
+  passed: boolean;
+  gate: string;
+  message: string;
+  value?: number;
+  threshold?: number;
+}
 
 function SealStatusIcon({ status }: { status: string }) {
   if (status === "approved") return <CheckCircle2 className="h-4 w-4 text-[hsl(142,60%,45%)]" />;
@@ -75,6 +105,9 @@ const CollectionDetail = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [sealPending, setSealPending] = useState<Set<string>>(new Set());
   const [sealErrors, setSealErrors] = useState<Record<string, string>>({});
+  const [lifecyclePending, setLifecyclePending] = useState(false);
+  const [lifecycleError, setLifecycleError] = useState<string | null>(null);
+  const [gateResults, setGateResults] = useState<GateResult[]>([]);
 
   useEffect(() => {
     if (!id) return;
@@ -156,6 +189,43 @@ const CollectionDetail = () => {
     }
 
     setSealPending((prev) => { const next = new Set(prev); next.delete(sealType); return next; });
+  };
+
+  const handleLifecycleTransition = async (targetStatus: string) => {
+    setLifecyclePending(true);
+    setLifecycleError(null);
+    setGateResults([]);
+
+    const { data, error } = await supabase.functions.invoke("lifecycle-gate", {
+      body: { collectionId: id, targetStatus },
+    });
+
+    if (error) {
+      setLifecycleError(error.message ?? "Transition failed");
+      setLifecyclePending(false);
+      return;
+    }
+
+    if (data?.error) {
+      setLifecycleError(data.error);
+      setLifecyclePending(false);
+      return;
+    }
+
+    if (data?.allowed === false) {
+      setGateResults(data.gates ?? []);
+      const blocked = (data.blockedBy ?? []).map((g: GateResult) => g.message).join("; ");
+      setLifecycleError(blocked || "Transition blocked by gates");
+      setLifecyclePending(false);
+      return;
+    }
+
+    // Success — update local state
+    if (data?.newStatus && collection) {
+      setCollection({ ...collection, lifecycle_status: data.newStatus });
+      setGateResults(data.gates ?? []);
+    }
+    setLifecyclePending(false);
   };
 
   if (loading) {
@@ -284,6 +354,9 @@ const CollectionDetail = () => {
             </TabsTrigger>
             <TabsTrigger value="seals" className="font-body text-xs">
               Seals · {allSealsApproved ? "✓" : `${approvedSealCount}/3`}
+            </TabsTrigger>
+            <TabsTrigger value="lifecycle" className="font-body text-xs">
+              Lifecycle
             </TabsTrigger>
             <TabsTrigger value="events" className="font-body text-xs">
               History ({events.length})
@@ -492,6 +565,129 @@ const CollectionDetail = () => {
                     </div>
                   );
                 })}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Lifecycle ──────────────────────────────────────────── */}
+          <TabsContent value="lifecycle">
+            <Card className="border-border">
+              <CardHeader className="pb-3">
+                <CardTitle className="font-display text-base font-light flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4" />
+                  Lifecycle Status
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Current status */}
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-muted-foreground font-body">Current:</span>
+                  <Badge variant="secondary" className="text-xs font-body uppercase">
+                    {STATUS_LABELS[collection.lifecycle_status] ?? collection.lifecycle_status}
+                  </Badge>
+                </div>
+
+                {/* Transition buttons — admin only */}
+                {(() => {
+                  const transitions = VALID_TRANSITIONS[collection.lifecycle_status] ?? [];
+                  const nextStatus = transitions[0] ?? null;
+                  const prevStatus = transitions[1] ?? null;
+                  const isTerminal = transitions.length === 0;
+
+                  if (isTerminal) {
+                    return (
+                      <p className="text-xs font-body text-muted-foreground italic">
+                        This collection has reached its final status. No further transitions available.
+                      </p>
+                    );
+                  }
+
+                  if (!isAdmin) {
+                    return (
+                      <p className="text-xs font-body text-muted-foreground italic">
+                        Only admins can advance or move back collection status.
+                      </p>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {nextStatus && (
+                          <Button
+                            size="sm"
+                            className="text-[10px] font-body h-8 px-3"
+                            disabled={lifecyclePending}
+                            onClick={() => handleLifecycleTransition(nextStatus)}
+                          >
+                            {lifecyclePending ? (
+                              <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
+                            ) : (
+                              <ChevronRight className="h-3 w-3 mr-1.5" />
+                            )}
+                            Advance to {STATUS_LABELS[nextStatus] ?? nextStatus}
+                          </Button>
+                        )}
+                        {prevStatus && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-[10px] font-body h-8 px-3"
+                            disabled={lifecyclePending}
+                            onClick={() => handleLifecycleTransition(prevStatus)}
+                          >
+                            {lifecyclePending ? (
+                              <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
+                            ) : (
+                              <ChevronLeft className="h-3 w-3 mr-1.5" />
+                            )}
+                            Move back to {STATUS_LABELS[prevStatus] ?? prevStatus}
+                          </Button>
+                        )}
+                      </div>
+
+                      {/* Gate failure panel */}
+                      {lifecycleError && (
+                        <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 space-y-2">
+                          <p className="text-xs font-body text-destructive font-medium flex items-center gap-1.5">
+                            <XCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                            Transition blocked
+                          </p>
+                          {gateResults.length > 0 ? (
+                            <div className="space-y-1.5">
+                              {gateResults.map((g) => (
+                                <div key={g.gate} className="flex items-start gap-2 text-[10px] font-body">
+                                  {g.passed ? (
+                                    <CheckCircle2 className="h-3 w-3 text-[hsl(142,60%,45%)] mt-0.5 flex-shrink-0" />
+                                  ) : (
+                                    <XCircle className="h-3 w-3 text-destructive mt-0.5 flex-shrink-0" />
+                                  )}
+                                  <span className={g.passed ? "text-muted-foreground" : "text-destructive"}>
+                                    {g.message}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-[10px] font-body text-destructive">{lifecycleError}</p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Success gate results (shown after a successful transition) */}
+                      {!lifecycleError && gateResults.length > 0 && (
+                        <div className="rounded-md border border-border bg-muted/20 p-3 space-y-1.5">
+                          {gateResults.map((g) => (
+                            <div key={g.gate} className="flex items-start gap-2 text-[10px] font-body">
+                              <CheckCircle2 className="h-3 w-3 text-[hsl(142,60%,45%)] mt-0.5 flex-shrink-0" />
+                              <span className="text-muted-foreground">{g.message}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </CardContent>
             </Card>
           </TabsContent>
