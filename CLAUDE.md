@@ -73,12 +73,15 @@ purchase ledgers must never be readable by the anon role.
 
 ## Architecture — 7 strictly separated domains
 
-Current tables (19 as of 2026-03-16):
+Current tables (26 as of 2026-03-18):
   user_roles, designs, design_versions, tags, design_tags,
   collections, collection_items, collection_scores, collection_events,
   stories, exports (DEPRECATED), export_packs, export_pack_items,
   production_jobs, ai_generation_logs, brand_files, brand_rules,
-  planner_tasks, strategic_alerts
+  planner_tasks, strategic_alerts,
+  collection_seals, seal_audit_log,
+  qr_codes, qr_scans,
+  vault_configs, vault_purchases, vault_redemptions
 
 1. Product catalogue       → collections, collection_items, designs,
                              design_versions (EXISTS)
@@ -87,21 +90,18 @@ Current tables (19 as of 2026-03-16):
 2. Pricing / margin gates  → collection_items pricing columns (EXISTS)
                              GENERATED STORED columns on
                              product_variants (PLANNED)
-3. 3-Seal workflow         → collection_seals, seal_audit_log
-                             (PLANNED — not yet in schema)
-                             (internal only — never client-readable)
+3. 3-Seal workflow         → collection_seals, seal_audit_log (EXISTS)
+                             (admin-only RLS — never client-readable by anon)
 4. Customer Founder Vault  → vault_configs, vault_purchases,
-                             vault_redemptions (PLANNED)
+                             vault_redemptions (EXISTS)
                              customer_vault_progress (DEFERRED — use
                              computed query until performance requires it)
-5. QR public discovery     → qr_codes (PLANNED — anon-readable,
-                             active only)
+5. QR public discovery     → qr_codes (EXISTS — anon-readable, active only)
+                             qr_scans (EXISTS — append-only, never public)
 6. Vault access tokens     → vault_access_tokens
                              (PLANNED — customer-specific, never public)
 7. Internal governance     → brand_rules, brand_files (EXISTS)
                              brand_governance (PLANNED)
-   Scan log                → qr_scans (PLANNED — append-only,
-                             never public)
 
 Never mix domains 3 and 4.
 Never mix domains 5 and 6.
@@ -134,17 +134,27 @@ Never mix domains 5 and 6.
 - brand_rules: one per user (UNIQUE constraint on user_id).
 - exports table is DEPRECATED — use export_packs / export_pack_items.
 
+### Currently enforced (in live schema — domains 3–5)
+- collection_seals: all 3 seals (brand_dna, finance_gate,
+  production_ready) must be approved before lifecycle_status
+  can transition to approved_for_production. Enforced by
+  lifecycle-gate Edge Function seal gate check.
+- qr_codes: collection_discovery ↔ collection_id only,
+            product_id nullable (V2 placeholder), strict XOR
+            via num_nonnulls() CHECK constraint.
+- qr_scans: anon INSERT only allowed if qr_code is active
+            (RLS WITH CHECK against qr_codes.is_active).
+- vault_configs: one per collection (UNIQUE on collection_id).
+- vault_redemptions: one per customer per vault_config
+  (UNIQUE on vault_config_id + customer_id).
+
 ### Planned rules (for tables not yet in schema)
 - vault_purchases.counted_for_vault = TRUE requires
   is_vault_eligible = TRUE on the product.
 - vault_configs.reward_sku_ref must reference a valid
   collection_items.sku in the same collection.
-- One active vault redemption per customer per vault_config.
-- qr_codes: collection_discovery ↔ collection_id only,
-            product_scan ↔ product_id only (strict XOR).
-- qr_scans: qr_code_id XOR vault_token_id, never both.
-- collection_seals: all 3 seals must be approved before
-  lifecycle_status can transition to approved_for_production.
+- qr_scans: qr_code_id XOR vault_token_id, never both
+  (vault_access_tokens table not yet in schema).
 
 ## Migration discipline
 
@@ -172,9 +182,8 @@ Run after every migration:
     --schema public \
     > src/types/supabase.ts
 
-Verify the output contains all 19 current table types before
-writing any service layer code. Table count will grow as
-domains 3–6 are implemented.
+Verify the output contains all 26 current table types before
+writing any service layer code.
 
 ## Preferred working method
 
@@ -248,12 +257,21 @@ Unless asked otherwise:
 
 ## Implementation status
 
-Step 1 — Status stabilization     ✅ Complete (migrations A + B + code fixes)
-Step 2 — Export domain            ✅ Complete (migration C + health check fix)
-Step 3 — 3 Seals                  ✅ Complete (migration D + lifecycle-gate seal check + events write)
-Step 4 — Collection detail page   ✅ Complete (/collections/:id, 486 lines, tabs layout)
-Step 5 — QR V1                    ✅ Complete (migration E + F, qr_codes + qr_scans)
-Step 6 — Founder's Vault V1       ✅ Complete (migration G, 3 tables)
+Use explicit labels — not step numbers — to avoid ambiguity.
+
+--- DB / backend ---
+Status Stabilization    ✅ Complete (migrations A + B, lifecycle_status canonical, status shadow sync trigger)
+Export Domain           ✅ Complete (migration C, export_packs + export_pack_items, exports table deprecated)
+Seals Domain            ✅ Complete (migration D, collection_seals + seal_audit_log, lifecycle-gate seal gate + events write)
+QR Domain               ✅ Complete (migrations E + F, qr_codes + qr_scans, anon RLS hardened)
+Vault Domain            ✅ Complete (migration G, vault_configs + vault_purchases + vault_redemptions)
+
+--- UI ---
+Collection Detail Page  ✅ Complete (/collections/:id, tabs: SKUs / Score / Seals / History — read-only)
+Exports UI              ✅ Complete (src/pages/Exports.tsx, wired to export_packs, inline expand, read-only)
+Seals Admin UI          ⏳ Next     (approve/revoke seals from collection detail page, needs Edge Function)
+QR UI                   ⬜ Not started
+Vault UI                ⬜ Not started
 ```
 
 ---
