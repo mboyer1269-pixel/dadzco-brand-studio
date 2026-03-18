@@ -11,7 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import {
   ArrowLeft, Package, Star, ShieldCheck, Clock,
-  CheckCircle2, XCircle, Minus, TrendingUp, AlertTriangle,
+  CheckCircle2, XCircle, Minus, TrendingUp, AlertTriangle, Loader2,
 } from "lucide-react";
 
 type CollectionRow = Tables<"collections">;
@@ -72,6 +72,9 @@ const CollectionDetail = () => {
   const [events, setEvents] = useState<CollectionEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [sealPending, setSealPending] = useState<Set<string>>(new Set());
+  const [sealErrors, setSealErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!id) return;
@@ -114,10 +117,46 @@ const CollectionDetail = () => {
       setScore(scoreRows?.[0] ?? null);
       setSeals(sealRows || []);
       setEvents(eventRows || []);
+
+      // Admin check — used only to show/hide action buttons.
+      // The Edge Function enforces the real admin guard server-side.
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: roleRow } = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", user.id)
+          .eq("role", "admin")
+          .maybeSingle();
+        setIsAdmin(!!roleRow);
+      }
+
       setLoading(false);
     };
     load();
   }, [id]);
+
+  const handleSealAction = async (sealType: string, action: "approve" | "revoke") => {
+    setSealPending((prev) => new Set(prev).add(sealType));
+    setSealErrors((prev) => { const next = { ...prev }; delete next[sealType]; return next; });
+
+    const { data, error } = await supabase.functions.invoke("manage-seal", {
+      body: { collection_id: id, seal_type: sealType, action },
+    });
+
+    if (error || data?.error) {
+      const msg = data?.error ?? error?.message ?? "Action failed";
+      setSealErrors((prev) => ({ ...prev, [sealType]: msg }));
+    } else if (data?.seal) {
+      setSeals((prev) => {
+        const exists = prev.some((s) => s.seal_type === sealType);
+        if (exists) return prev.map((s) => (s.seal_type === sealType ? data.seal : s));
+        return [...prev, data.seal];
+      });
+    }
+
+    setSealPending((prev) => { const next = new Set(prev); next.delete(sealType); return next; });
+  };
 
   if (loading) {
     return (
@@ -148,7 +187,7 @@ const CollectionDetail = () => {
     );
   }
 
-  const meta = collection.metadata as any;
+  const meta = collection.metadata as Record<string, unknown>;
   const sealMap = Object.fromEntries(seals.map((s) => [s.seal_type, s]));
   const approvedSealCount = seals.filter((s) => s.status === "approved").length;
   const allSealsApproved = approvedSealCount === 3;
@@ -385,42 +424,71 @@ const CollectionDetail = () => {
                 {REQUIRED_SEALS.map((sealType) => {
                   const seal = sealMap[sealType] ?? null;
                   const status = seal?.status ?? "pending";
+                  const pending = sealPending.has(sealType);
                   return (
-                    <div
-                      key={sealType}
-                      className="flex items-start justify-between p-3 rounded-md border border-border bg-muted/20"
-                    >
-                      <div className="flex items-center gap-3">
-                        <SealStatusIcon status={status} />
-                        <div>
-                          <p className="text-sm font-body text-foreground">
-                            {SEAL_LABELS[sealType]}
-                          </p>
-                          {seal?.approved_at && (
-                            <p className="text-[10px] text-muted-foreground font-body mt-0.5">
-                              {status === "approved" ? "Approved" : "Updated"}{" "}
-                              {new Date(seal.approved_at).toLocaleDateString()}
+                    <div key={sealType} className="space-y-1">
+                      <div className="flex items-start justify-between p-3 rounded-md border border-border bg-muted/20">
+                        <div className="flex items-center gap-3">
+                          <SealStatusIcon status={status} />
+                          <div>
+                            <p className="text-sm font-body text-foreground">
+                              {SEAL_LABELS[sealType]}
                             </p>
+                            {seal?.approved_at && (
+                              <p className="text-[10px] text-muted-foreground font-body mt-0.5">
+                                {status === "approved" ? "Approved" : "Updated"}{" "}
+                                {new Date(seal.approved_at).toLocaleDateString()}
+                              </p>
+                            )}
+                            {seal?.notes && (
+                              <p className="text-[10px] text-muted-foreground font-body mt-0.5 italic">
+                                {seal.notes}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {isAdmin && (
+                            <Button
+                              size="sm"
+                              variant={status === "approved" ? "outline" : "default"}
+                              className="text-[10px] font-body h-7 px-2"
+                              disabled={pending}
+                              onClick={() =>
+                                handleSealAction(
+                                  sealType,
+                                  status === "approved" ? "revoke" : "approve"
+                                )
+                              }
+                            >
+                              {pending ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : status === "approved" ? (
+                                "Revoke"
+                              ) : (
+                                "Approve"
+                              )}
+                            </Button>
                           )}
-                          {seal?.notes && (
-                            <p className="text-[10px] text-muted-foreground font-body mt-0.5 italic">
-                              {seal.notes}
-                            </p>
-                          )}
+                          <Badge
+                            variant={
+                              status === "approved"
+                                ? "default"
+                                : status === "revoked"
+                                ? "destructive"
+                                : "secondary"
+                            }
+                            className="text-[9px] font-body uppercase"
+                          >
+                            {status}
+                          </Badge>
                         </div>
                       </div>
-                      <Badge
-                        variant={
-                          status === "approved"
-                            ? "default"
-                            : status === "revoked"
-                            ? "destructive"
-                            : "secondary"
-                        }
-                        className="text-[9px] font-body uppercase"
-                      >
-                        {status}
-                      </Badge>
+                      {sealErrors[sealType] && (
+                        <p className="text-[10px] text-destructive font-body pl-1">
+                          {sealErrors[sealType]}
+                        </p>
+                      )}
                     </div>
                   );
                 })}
