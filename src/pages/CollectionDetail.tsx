@@ -8,6 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import {
@@ -107,6 +112,11 @@ const CollectionDetail = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [sealPending, setSealPending] = useState<Set<string>>(new Set());
   const [sealErrors, setSealErrors] = useState<Record<string, string>>({});
+  const [sealDialog, setSealDialog] = useState<{
+    sealType: string;
+    action: "approve" | "revoke";
+  } | null>(null);
+  const [sealReason, setSealReason] = useState("");
   const [lifecyclePending, setLifecyclePending] = useState(false);
   const [lifecycleError, setLifecycleError] = useState<string | null>(null);
   const [gateResults, setGateResults] = useState<GateResult[]>([]);
@@ -183,23 +193,42 @@ const CollectionDetail = () => {
     load();
   }, [id]);
 
-  const handleSealAction = async (sealType: string, action: "approve" | "revoke") => {
+  const handleSealAction = async (
+    sealType: string,
+    action: "approve" | "revoke",
+    reason: string,
+  ) => {
     setSealPending((prev) => new Set(prev).add(sealType));
     setSealErrors((prev) => { const next = { ...prev }; delete next[sealType]; return next; });
 
     const { data, error } = await supabase.functions.invoke("manage-seal", {
-      body: { collection_id: id, seal_type: sealType, action },
+      body: { collection_id: id, seal_type: sealType, action, reason },
     });
 
     if (error || data?.error) {
       const msg = data?.error ?? error?.message ?? "Action failed";
       setSealErrors((prev) => ({ ...prev, [sealType]: msg }));
     } else if (data?.seal) {
+      // Optimistic update from the Edge Function's returned row.
       setSeals((prev) => {
         const exists = prev.some((s) => s.seal_type === sealType);
         if (exists) return prev.map((s) => (s.seal_type === sealType ? data.seal : s));
         return [...prev, data.seal];
       });
+      // Authoritative refresh — seals + events (history) stay in sync with server state.
+      const [sealsRefresh, eventsRefresh] = await Promise.all([
+        supabase.from("collection_seals").select("*").eq("collection_id", id),
+        supabase
+          .from("collection_events")
+          .select("*")
+          .eq("collection_id", id)
+          .order("created_at", { ascending: false })
+          .limit(20),
+      ]);
+      if (sealsRefresh.data) setSeals(sealsRefresh.data);
+      if (eventsRefresh.data) setEvents(eventsRefresh.data);
+      setSealDialog(null);
+      setSealReason("");
     }
 
     setSealPending((prev) => { const next = new Set(prev); next.delete(sealType); return next; });
@@ -560,10 +589,10 @@ const CollectionDetail = () => {
                               className="text-[10px] font-body h-7 px-2"
                               disabled={pending}
                               onClick={() =>
-                                handleSealAction(
+                                setSealDialog({
                                   sealType,
-                                  status === "approved" ? "revoke" : "approve"
-                                )
+                                  action: status === "approved" ? "revoke" : "approve",
+                                })
                               }
                             >
                               {pending ? (
@@ -830,6 +859,81 @@ const CollectionDetail = () => {
             </Card>
           </TabsContent>
         </Tabs>
+
+        {/* ── Seal action reason dialog (admin only) ───────────────── */}
+        <Dialog
+          open={sealDialog !== null}
+          onOpenChange={(open) => {
+            if (!open) {
+              const activeSeal = sealDialog?.sealType;
+              if (activeSeal && sealPending.has(activeSeal)) return;
+              setSealDialog(null);
+              setSealReason("");
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="font-display text-lg font-light">
+                {sealDialog?.action === "approve" ? "Approve" : "Revoke"}{" "}
+                {sealDialog ? SEAL_LABELS[sealDialog.sealType] : "seal"}
+              </DialogTitle>
+              <DialogDescription className="text-xs font-body">
+                This action is logged to the seal audit trail. A reason is required.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <Label htmlFor="seal-reason" className="text-xs font-body">
+                Reason <span className="text-destructive">*</span>
+              </Label>
+              <Textarea
+                id="seal-reason"
+                value={sealReason}
+                onChange={(e) => setSealReason(e.target.value)}
+                placeholder="e.g. Margin verified ≥ 55% across all SKUs; brand voice check passed."
+                rows={4}
+                className="text-xs font-body"
+              />
+              {sealDialog && sealErrors[sealDialog.sealType] && (
+                <p className="text-[10px] text-destructive font-body">
+                  {sealErrors[sealDialog.sealType]}
+                </p>
+              )}
+            </div>
+            <DialogFooter className="gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => { setSealDialog(null); setSealReason(""); }}
+                disabled={sealDialog ? sealPending.has(sealDialog.sealType) : false}
+                className="text-[10px] font-body"
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                className="text-[10px] font-body"
+                disabled={
+                  !sealReason.trim() ||
+                  (sealDialog ? sealPending.has(sealDialog.sealType) : false)
+                }
+                onClick={() => {
+                  if (!sealDialog) return;
+                  void handleSealAction(
+                    sealDialog.sealType,
+                    sealDialog.action,
+                    sealReason.trim(),
+                  );
+                }}
+              >
+                {sealDialog && sealPending.has(sealDialog.sealType) ? (
+                  <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
+                ) : null}
+                Confirm {sealDialog?.action ?? ""}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
       </div>
     </AppLayout>
