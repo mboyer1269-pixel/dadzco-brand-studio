@@ -3,13 +3,15 @@ import { AppLayout } from "@/components/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
-  LayoutDashboard, TrendingUp, DollarSign, FolderOpen,
+  LayoutDashboard, DollarSign, FolderOpen, ShieldCheck,
   Sparkles, Loader2, ArrowRight, AlertTriangle,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useHQMetrics } from "@/hooks/useHQMetrics";
 import StrategicAlerts from "@/components/StrategicAlerts";
 
 interface CHAPMove {
@@ -18,10 +20,75 @@ interface CHAPMove {
   priority: "high" | "medium" | "low";
 }
 
+interface KpiTileProps {
+  label: string;
+  value: number | null;
+  loading: boolean;
+  error?: string;
+  icon: React.ComponentType<{ className?: string }>;
+  format?: (n: number) => string;
+  warn?: (n: number) => boolean;
+}
+
+function KpiTile({ label, value, loading, error, icon: Icon, format, warn }: KpiTileProps) {
+  let display: React.ReactNode;
+  if (loading) {
+    display = <Skeleton className="h-7 w-16 mt-1" />;
+  } else if (error) {
+    display = (
+      <p
+        className="text-xs font-body text-destructive mt-1 truncate"
+        title={error}
+      >
+        unavailable
+      </p>
+    );
+  } else if (value === null) {
+    display = (
+      <p
+        className="text-2xl font-display font-light text-muted-foreground mt-1"
+        title="No data yet"
+      >
+        —
+      </p>
+    );
+  } else {
+    const text = format ? format(value) : String(value);
+    const bad = warn?.(value);
+    display = (
+      <p
+        className={`text-2xl font-display font-light mt-1 ${
+          bad ? "text-destructive" : "text-foreground"
+        }`}
+      >
+        {text}
+      </p>
+    );
+  }
+  return (
+    <Card className="border-border">
+      <CardContent className="p-5">
+        <div className="flex items-center justify-between">
+          <div className="min-w-0">
+            <p className="text-[10px] text-muted-foreground font-body uppercase tracking-wider">
+              {label}
+            </p>
+            {display}
+          </div>
+          <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center shrink-0">
+            <Icon className="h-4 w-4 text-muted-foreground" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function HQ() {
   const { toast } = useToast();
   const [chapMoves, setChapMoves] = useState<CHAPMove[]>([]);
   const [isLoadingChap, setIsLoadingChap] = useState(false);
+  const metrics = useHQMetrics();
 
   const handleAskCHAP = async () => {
     setIsLoadingChap(true);
@@ -72,26 +139,37 @@ export default function HQ() {
 
         {/* KPI Row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            { label: "Active Capsules", value: "—", icon: FolderOpen },
-            { label: "Avg Margin", value: "—", icon: DollarSign },
-            { label: "Avg QA Score", value: "—", icon: TrendingUp },
-            { label: "Risk Overrides", value: "0", icon: AlertTriangle },
-          ].map((kpi) => (
-            <Card key={kpi.label} className="border-border">
-              <CardContent className="p-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[10px] text-muted-foreground font-body uppercase tracking-wider">{kpi.label}</p>
-                    <p className="text-2xl font-display font-light text-foreground mt-1">{kpi.value}</p>
-                  </div>
-                  <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
-                    <kpi.icon className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+          <KpiTile
+            label="Active Capsules"
+            icon={FolderOpen}
+            value={metrics.activeCapsules}
+            loading={metrics.isLoading}
+            error={metrics.errors.activeCapsules}
+          />
+          <KpiTile
+            label="Avg Margin"
+            icon={DollarSign}
+            value={metrics.avgMargin}
+            loading={metrics.isLoading}
+            error={metrics.errors.avgMargin}
+            format={(n) => `${n.toFixed(1)}%`}
+            warn={(n) => n < 55}
+          />
+          <KpiTile
+            label="Seal Coverage"
+            icon={ShieldCheck}
+            value={metrics.sealCoverage}
+            loading={metrics.isLoading}
+            error={metrics.errors.sealCoverage}
+            format={(n) => `${n}%`}
+          />
+          <KpiTile
+            label="Open Alerts"
+            icon={AlertTriangle}
+            value={metrics.openAlerts}
+            loading={metrics.isLoading}
+            error={metrics.errors.openAlerts}
+          />
         </div>
 
         {/* CHAP Section */}
