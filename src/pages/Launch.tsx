@@ -1,14 +1,11 @@
 import { AppLayout } from "@/components/AppLayout";
 import { Rocket } from "lucide-react";
-import { ManusAiBriefing } from "@/components/launch/ManusAiBriefing";
-import { MetaLeonardoHub } from "@/components/launch/MetaLeonardoHub";
-import { GoLiveOps } from "@/components/launch/GoLiveOps";
-import { AutomationGantt } from "@/components/launch/AutomationGantt";
+import { LaunchChecklist } from "@/components/launch/LaunchChecklist";
 
 export default function Launch() {
   return (
     <AppLayout>
-      <div className="max-w-6xl mx-auto space-y-8">
+      <div className="max-w-3xl mx-auto space-y-8">
         {/* Header */}
         <div className="gradient-header rounded-lg p-6 -mx-2">
           <div className="flex items-center gap-3 mb-2">
@@ -18,24 +15,11 @@ export default function Launch() {
             </h1>
           </div>
           <p className="text-sm text-muted-foreground font-body">
-            Centre de commande marketing — Manus AI, Leonardo, Meta
+            Checklist de pré-lancement — état persisté
           </p>
         </div>
 
-        {/* Grid Layout: 2 columns on large screens */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Left Column */}
-          <div className="space-y-6">
-            <ManusAiBriefing />
-            <GoLiveOps />
-          </div>
-
-          {/* Right Column */}
-          <div className="space-y-6">
-            <MetaLeonardoHub />
-            <AutomationGantt />
-          </div>
-        </div>
+        <LaunchChecklist />
       </div>
     </AppLayout>
   );
