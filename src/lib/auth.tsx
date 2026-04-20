@@ -2,15 +2,12 @@ import { createContext, useContext, useEffect, useState, ReactNode } from "react
 import { supabase } from "@/integrations/supabase/client";
 import type { User, Session } from "@supabase/supabase-js";
 
-const ACCESS_CODE = "0413";
-
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   isAdmin: boolean;
   isLoading: boolean;
   isAuthenticated: boolean;
-  signInWithCode: (code: string) => { error: Error | null };
   signInWithMagicLink: (email: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
 }
@@ -21,7 +18,6 @@ const defaultCtx: AuthContextType = {
   isAdmin: false,
   isLoading: true,
   isAuthenticated: false,
-  signInWithCode: () => ({ error: new Error("AuthProvider not ready") }),
   signInWithMagicLink: async () => ({ error: new Error("AuthProvider not ready") }),
   signOut: async () => {},
 };
@@ -32,12 +28,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isCodeAuthenticated, setIsCodeAuthenticated] = useState(() => {
-    return sessionStorage.getItem("dadzco_auth") === "true";
-  });
+  const [isAdmin, setIsAdmin] = useState(false);
 
-  const isAdmin = !!user || isCodeAuthenticated;
-  const isAuthenticated = !!session || isCodeAuthenticated;
+  const isAuthenticated = !!session;
 
   useEffect(() => {
     // Set up auth listener FIRST
@@ -59,14 +52,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signInWithCode = (code: string) => {
-    if (code === ACCESS_CODE) {
-      setIsCodeAuthenticated(true);
-      sessionStorage.setItem("dadzco_auth", "true");
-      return { error: null };
+  // Derive admin role from the user_roles table, not from local state
+  useEffect(() => {
+    let cancelled = false;
+    if (!user) {
+      setIsAdmin(false);
+      return;
     }
-    return { error: new Error("Code incorrect.") };
-  };
+    (async () => {
+      const { data } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id)
+        .eq("role", "admin")
+        .maybeSingle();
+      if (!cancelled) setIsAdmin(!!data);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   const signInWithMagicLink = async (email: string) => {
     const { error } = await supabase.auth.signInWithOtp({
@@ -77,13 +82,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    setIsCodeAuthenticated(false);
-    sessionStorage.removeItem("dadzco_auth");
     await supabase.auth.signOut();
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, isAdmin, isLoading, isAuthenticated, signInWithCode, signInWithMagicLink, signOut }}>
+    <AuthContext.Provider value={{ user, session, isAdmin, isLoading, isAuthenticated, signInWithMagicLink, signOut }}>
       {children}
     </AuthContext.Provider>
   );
