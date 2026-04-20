@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { QRCodeSVG } from "qrcode.react";
+import { QRCodeCanvas, QRCodeSVG } from "qrcode.react";
 import { AppLayout } from "@/components/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -18,8 +18,9 @@ import type { Tables } from "@/integrations/supabase/types";
 import {
   ArrowLeft, Package, Star, ShieldCheck, Clock,
   CheckCircle2, XCircle, Minus, TrendingUp, AlertTriangle, Loader2,
-  ChevronRight, ChevronLeft, QrCode,
+  ChevronRight, ChevronLeft, QrCode, FileDown,
 } from "lucide-react";
+import { exportCollectionQRSheetPDF } from "@/lib/collection-qr-sheet-pdf";
 
 type CollectionRow = Tables<"collections">;
 type CollectionItem = Tables<"collection_items"> & {
@@ -123,6 +124,8 @@ const CollectionDetail = () => {
   const [qrCode, setQrCode] = useState<QrCodeRow | null>(null);
   const [qrPending, setQrPending] = useState(false);
   const [qrError, setQrError] = useState<string | null>(null);
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [qrSheetError, setQrSheetError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -269,6 +272,34 @@ const CollectionDetail = () => {
       setGateResults(data.gates ?? []);
     }
     setLifecyclePending(false);
+  };
+
+  const handleDownloadQrSheet = () => {
+    setQrSheetError(null);
+    if (!collection || !qrCode) return;
+    const canvas = qrCanvasRef.current;
+    if (!canvas) {
+      setQrSheetError("QR canvas not ready. Try again in a moment.");
+      return;
+    }
+    try {
+      const dataUrl = canvas.toDataURL("image/png");
+      exportCollectionQRSheetPDF({
+        collectionName: collection.name,
+        lifecycleLabel: STATUS_LABELS[collection.lifecycle_status] ?? collection.lifecycle_status,
+        targetUrl: `${window.location.origin}/collections/${id}`,
+        shortCode: qrCode.short_code ?? null,
+        skus: items.map((item) => ({
+          sku: item.sku,
+          title: item.designs?.title ?? null,
+          provider: item.provider,
+        })),
+        qrImageDataUrl: dataUrl,
+      });
+    } catch (err) {
+      console.error("QR sheet PDF error:", err);
+      setQrSheetError("Failed to generate QR sheet PDF.");
+    }
   };
 
   const handleGenerateQr = async () => {
@@ -796,6 +827,16 @@ const CollectionDetail = () => {
                       fgColor="#000000"
                       level="M"
                     />
+                    {/* Hidden high-res canvas used only for PDF rasterization */}
+                    <QRCodeCanvas
+                      ref={qrCanvasRef}
+                      value={`${window.location.origin}/collections/${id}`}
+                      size={512}
+                      bgColor="#ffffff"
+                      fgColor="#000000"
+                      level="M"
+                      style={{ display: "none" }}
+                    />
                     <div className="flex items-center gap-2">
                       <Badge variant="secondary" className="text-[9px] font-body font-mono uppercase">
                         {qrCode.short_code}
@@ -804,6 +845,18 @@ const CollectionDetail = () => {
                     <p className="text-[10px] text-muted-foreground font-body text-center max-w-xs break-all">
                       {`${window.location.origin}/collections/${id}`}
                     </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-[10px] font-body h-8 px-3"
+                      onClick={handleDownloadQrSheet}
+                    >
+                      <FileDown className="h-3 w-3 mr-1.5" />
+                      QR Sheet PDF
+                    </Button>
+                    {qrSheetError && (
+                      <p className="text-[10px] text-destructive font-body">{qrSheetError}</p>
+                    )}
                   </div>
                 )}
               </CardContent>
