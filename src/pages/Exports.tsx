@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
+import { exportPackPDF } from "@/lib/export-pack-pdf";
+import { toast } from "sonner";
 import {
   Download,
   Plus,
@@ -13,6 +15,7 @@ import {
   ChevronUp,
   Folder,
   Package,
+  FileDown,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -93,6 +96,16 @@ const Exports = () => {
   const toggleExpand = (id: string) =>
     setExpandedId((prev) => (prev === id ? null : id));
 
+  const handleDownloadPDF = (pack: ExportPack, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      exportPackPDF(pack);
+    } catch (err) {
+      console.error("Export pack PDF error:", err);
+      toast.error("Impossible de générer le PDF.");
+    }
+  };
+
   return (
     <AppLayout>
       <div className="max-w-6xl mx-auto">
@@ -157,9 +170,18 @@ const Exports = () => {
                   className="border-border gradient-card-warm overflow-hidden"
                 >
                   {/* ── Row ── */}
-                  <button
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={isExpanded}
                     onClick={() => toggleExpand(pack.id)}
-                    className="w-full text-left"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        toggleExpand(pack.id);
+                      }
+                    }}
+                    className="w-full text-left cursor-pointer"
                   >
                     <CardContent className="p-5 flex items-center justify-between gap-4">
                       {/* Left: collection + meta */}
@@ -185,8 +207,17 @@ const Exports = () => {
                         </div>
                       </div>
 
-                      {/* Right: version + status + expand toggle */}
+                      {/* Right: PDF + version + status + expand toggle */}
                       <div className="flex items-center gap-3 shrink-0">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 font-body text-[10px] tracking-wider uppercase"
+                          onClick={(e) => handleDownloadPDF(pack, e)}
+                        >
+                          <FileDown className="h-3 w-3 mr-1" />
+                          PDF
+                        </Button>
                         <Badge
                           variant="outline"
                           className="font-mono text-xs border-border"
@@ -206,7 +237,7 @@ const Exports = () => {
                         )}
                       </div>
                     </CardContent>
-                  </button>
+                  </div>
 
                   {/* ── Expanded detail ── */}
                   {isExpanded && (
