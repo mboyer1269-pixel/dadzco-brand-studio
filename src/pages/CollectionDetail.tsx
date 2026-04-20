@@ -85,6 +85,13 @@ function MarginCell({ margin }: { margin: number | null }) {
   );
 }
 
+function formatGateThreshold(g: GateResult): string | null {
+  if (g.value === undefined || g.threshold === undefined) return null;
+  const isPercent = g.gate === "margin_minimum" || g.gate === "financial_margin";
+  if (isPercent) return `${g.value.toFixed(1)}% / min ${g.threshold}%`;
+  return `${Math.round(g.value)} / min ${g.threshold}`;
+}
+
 function ScoreBar({ label, value }: { label: string; value: number }) {
   const pct = Math.min(100, Math.max(0, value));
   const color = pct >= 80 ? "bg-[hsl(142,60%,45%)]" : pct >= 60 ? "bg-amber-500" : "bg-destructive";
@@ -747,18 +754,32 @@ const CollectionDetail = () => {
                           </p>
                           {gateResults.length > 0 ? (
                             <div className="space-y-1.5">
-                              {gateResults.map((g) => (
-                                <div key={g.gate} className="flex items-start gap-2 text-[10px] font-body">
-                                  {g.passed ? (
-                                    <CheckCircle2 className="h-3 w-3 text-[hsl(142,60%,45%)] mt-0.5 flex-shrink-0" />
-                                  ) : (
-                                    <XCircle className="h-3 w-3 text-destructive mt-0.5 flex-shrink-0" />
-                                  )}
-                                  <span className={g.passed ? "text-muted-foreground" : "text-destructive"}>
-                                    {g.message}
-                                  </span>
-                                </div>
-                              ))}
+                              {gateResults.map((g) => {
+                                const threshold = formatGateThreshold(g);
+                                return (
+                                  <div key={g.gate} className="flex items-start gap-2 text-[10px] font-body">
+                                    {g.passed ? (
+                                      <CheckCircle2 className="h-3 w-3 text-[hsl(142,60%,45%)] mt-0.5 flex-shrink-0" />
+                                    ) : (
+                                      <XCircle className="h-3 w-3 text-destructive mt-0.5 flex-shrink-0" />
+                                    )}
+                                    <span className={g.passed ? "text-muted-foreground" : "text-destructive"}>
+                                      {g.message}
+                                    </span>
+                                    {threshold && (
+                                      <span
+                                        className={`ml-auto flex-shrink-0 font-mono tabular-nums px-1.5 py-0.5 rounded border ${
+                                          g.passed
+                                            ? "border-[hsl(142,60%,45%)]/30 bg-[hsl(142,60%,45%)]/5 text-[hsl(142,60%,45%)]"
+                                            : "border-destructive/40 bg-destructive/10 text-destructive"
+                                        }`}
+                                      >
+                                        {threshold}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
                           ) : (
                             <p className="text-[10px] font-body text-destructive">{lifecycleError}</p>
@@ -769,12 +790,20 @@ const CollectionDetail = () => {
                       {/* Success gate results (shown after a successful transition) */}
                       {!lifecycleError && gateResults.length > 0 && (
                         <div className="rounded-md border border-border bg-muted/20 p-3 space-y-1.5">
-                          {gateResults.map((g) => (
-                            <div key={g.gate} className="flex items-start gap-2 text-[10px] font-body">
-                              <CheckCircle2 className="h-3 w-3 text-[hsl(142,60%,45%)] mt-0.5 flex-shrink-0" />
-                              <span className="text-muted-foreground">{g.message}</span>
-                            </div>
-                          ))}
+                          {gateResults.map((g) => {
+                            const threshold = formatGateThreshold(g);
+                            return (
+                              <div key={g.gate} className="flex items-start gap-2 text-[10px] font-body">
+                                <CheckCircle2 className="h-3 w-3 text-[hsl(142,60%,45%)] mt-0.5 flex-shrink-0" />
+                                <span className="text-muted-foreground">{g.message}</span>
+                                {threshold && (
+                                  <span className="ml-auto flex-shrink-0 font-mono tabular-nums px-1.5 py-0.5 rounded border border-[hsl(142,60%,45%)]/30 bg-[hsl(142,60%,45%)]/5 text-[hsl(142,60%,45%)]">
+                                    {threshold}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
