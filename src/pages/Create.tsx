@@ -1,10 +1,11 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Lightbulb,
   Eye,
@@ -23,6 +24,7 @@ import {
   Settings2,
   Plus,
   Gift,
+  Ban,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -230,6 +232,8 @@ export default function Create() {
             One idea → 4 SKUs → Prompts → Routing → Finance Gate → Next Actions
           </p>
         </div>
+
+        <BrandCopyCheck />
 
         <div className="space-y-3">
           {STEPS.map((step) => {
@@ -738,6 +742,159 @@ function StepProduction({
         )}
       </div>
     </div>
+  );
+}
+
+function BrandCopyCheck() {
+  const [copy, setCopy] = useState("");
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [rulesLoaded, setRulesLoaded] = useState(false);
+  const [rulesError, setRulesError] = useState<string | null>(null);
+  const [violations, setViolations] = useState<string[] | null>(null);
+  const [checked, setChecked] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from("brand_rules")
+        .select("forbidden_keywords")
+        .order("created_at", { ascending: false });
+      if (cancelled) return;
+      if (error) {
+        setRulesError("Impossible de charger les règles brand.");
+        setRulesLoaded(true);
+        return;
+      }
+      const flat = (data ?? []).flatMap(
+        (r) => ((r.forbidden_keywords as string[] | null) ?? []),
+      );
+      const unique = Array.from(
+        new Set(
+          flat
+            .map((k) => (typeof k === "string" ? k.trim().toLowerCase() : ""))
+            .filter((k) => k.length > 0),
+        ),
+      );
+      setKeywords(unique);
+      setRulesLoaded(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const runCheck = () => {
+    const lower = copy.toLowerCase();
+    const hits = keywords.filter((kw) => lower.includes(kw));
+    setViolations(hits);
+    setChecked(true);
+  };
+
+  const reset = () => {
+    setCopy("");
+    setViolations(null);
+    setChecked(false);
+  };
+
+  const canRun =
+    rulesLoaded && !rulesError && keywords.length > 0 && copy.trim().length > 0;
+
+  return (
+    <Card className="border-border">
+      <CardHeader className="pb-3">
+        <CardTitle className="font-display text-base font-light flex items-center gap-2">
+          <ShieldCheck className="h-4 w-4" />
+          Brand Copy Check
+        </CardTitle>
+        <p className="text-[10px] text-muted-foreground font-body">
+          Colle ton launch copy. Vérification locale contre les mots-clés interdits extraits dans Brand Book.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <Textarea
+          value={copy}
+          onChange={(e) => {
+            setCopy(e.target.value);
+            setChecked(false);
+            setViolations(null);
+          }}
+          placeholder="Paste launch copy here…"
+          rows={4}
+          className="text-xs font-body"
+        />
+
+        {!rulesLoaded ? (
+          <p className="text-[10px] text-muted-foreground font-body">
+            Chargement des règles brand…
+          </p>
+        ) : rulesError ? (
+          <p className="text-[10px] text-destructive font-body">{rulesError}</p>
+        ) : keywords.length === 0 ? (
+          <p className="text-[10px] text-muted-foreground font-body italic">
+            Aucun mot-clé interdit n'a été extrait. Upload ton Brand Book pour activer la vérification.
+          </p>
+        ) : (
+          <p className="text-[10px] text-muted-foreground font-body">
+            Vérifié contre {keywords.length} mot(s)-clé(s) interdit(s).
+          </p>
+        )}
+
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            className="text-[10px] font-body tracking-wider uppercase h-8"
+            disabled={!canRun}
+            onClick={runCheck}
+          >
+            <ShieldCheck className="h-3 w-3 mr-1.5" />
+            Run Check
+          </Button>
+          {checked && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-[10px] font-body tracking-wider uppercase h-8"
+              onClick={reset}
+            >
+              Reset
+            </Button>
+          )}
+        </div>
+
+        {checked && violations !== null && violations.length === 0 && (
+          <div className="flex items-center gap-2 p-2.5 rounded-md bg-[hsl(142,60%,45%)]/10 border border-[hsl(142,60%,45%)]/30">
+            <Check className="h-4 w-4 text-[hsl(142,60%,45%)] shrink-0" />
+            <p className="text-xs font-body text-[hsl(142,60%,45%)]">
+              PASS — aucun mot-clé interdit détecté.
+            </p>
+          </div>
+        )}
+
+        {checked && violations !== null && violations.length > 0 && (
+          <div className="p-3 rounded-md bg-destructive/10 border border-destructive/30 space-y-2">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
+              <p className="text-xs font-body font-medium text-destructive">
+                FAIL — {violations.length} violation{violations.length > 1 ? "s" : ""} détectée{violations.length > 1 ? "s" : ""}.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {violations.map((kw) => (
+                <Badge
+                  key={kw}
+                  variant="outline"
+                  className="text-[9px] border-destructive/40 text-destructive bg-destructive/5 flex items-center gap-1"
+                >
+                  <Ban className="h-2.5 w-2.5" />
+                  {kw}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
