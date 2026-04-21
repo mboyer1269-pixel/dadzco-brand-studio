@@ -24,3 +24,6 @@ dist-ssr
 *.sw?
 
 supabase/.temp/
+
+# Test coverage output
+coverage/
