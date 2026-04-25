@@ -21,6 +21,7 @@ import {
   ChevronRight, ChevronLeft, QrCode, FileDown,
 } from "lucide-react";
 import { exportCollectionQRSheetPDF } from "@/lib/collection-qr-sheet-pdf";
+import { toast } from "sonner";
 
 type CollectionRow = Tables<"collections">;
 type CollectionItem = Tables<"collection_items"> & {
@@ -218,6 +219,7 @@ const CollectionDetail = () => {
     if (error || data?.error) {
       const msg = data?.error ?? error?.message ?? "Action failed";
       setSealErrors((prev) => ({ ...prev, [sealType]: msg }));
+      toast.error(msg);
     } else if (data?.seal) {
       // Optimistic update from the Edge Function's returned row.
       setSeals((prev) => {
@@ -237,6 +239,9 @@ const CollectionDetail = () => {
       ]);
       if (sealsRefresh.data) setSeals(sealsRefresh.data);
       if (eventsRefresh.data) setEvents(eventsRefresh.data);
+      toast.success(
+        `${SEAL_LABELS[sealType]} ${action === "approve" ? "approved" : "revoked"}.`,
+      );
       setSealDialog(null);
       setSealReason("");
     }
