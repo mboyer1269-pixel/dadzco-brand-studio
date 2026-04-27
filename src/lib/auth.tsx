@@ -74,9 +74,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user?.id]);
 
   const signInWithMagicLink = async (email: string) => {
+    // Prefer an explicit production URL so magic links never redirect to a
+    // localhost origin when VITE_SITE_URL is set in the deployment environment.
+    const redirectTo = import.meta.env.VITE_SITE_URL || window.location.origin;
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: window.location.origin },
+      options: { emailRedirectTo: redirectTo },
     });
     return { error: error ? new Error(error.message) : null };
   };

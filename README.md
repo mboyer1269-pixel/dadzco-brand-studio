@@ -33,4 +33,21 @@ npm run dev
 ```
 VITE_SUPABASE_URL=
 VITE_SUPABASE_PUBLISHABLE_KEY=
+VITE_SITE_URL=https://your-production-domain.com
 ```
+
+`VITE_SITE_URL` must be set in Vercel (and any other deployment environment).
+Without it, magic link emails embed `window.location.origin` as the redirect URL,
+which will be `localhost` when a link is requested from a local dev session.
+
+### Supabase Auth URL Configuration
+
+In the Supabase Dashboard → Authentication → URL Configuration, set:
+
+| Field | Value |
+|---|---|
+| Site URL | `https://your-production-domain.com` |
+| Redirect URLs | `https://your-production-domain.com/**` |
+| Redirect URLs | `http://localhost:8080/**` |
+
+`VITE_SITE_URL` and the Supabase Site URL must match.
