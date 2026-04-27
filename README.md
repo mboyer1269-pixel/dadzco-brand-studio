@@ -51,3 +51,7 @@ In the Supabase Dashboard → Authentication → URL Configuration, set:
 | Redirect URLs | `http://localhost:8080/**` |
 
 `VITE_SITE_URL` and the Supabase Site URL must match.
+
+### Admin email/password login
+
+Admin users must have a password set in Supabase Dashboard → Authentication → Users before using email/password login.
