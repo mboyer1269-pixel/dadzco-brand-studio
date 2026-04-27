@@ -5,12 +5,13 @@ import { AuthProvider, useAuth } from "./auth";
 import type { User, Session } from "@supabase/supabase-js";
 
 // vi.mock is hoisted — declare mocks with vi.hoisted so the factory can reference them
-const { mockUnsubscribe, mockOnAuthStateChange, mockGetSession, mockSignInWithOtp, mockSignOut, mockFrom } =
+const { mockUnsubscribe, mockOnAuthStateChange, mockGetSession, mockSignInWithOtp, mockSignInWithPassword, mockSignOut, mockFrom } =
   vi.hoisted(() => ({
     mockUnsubscribe: vi.fn(),
     mockOnAuthStateChange: vi.fn(),
     mockGetSession: vi.fn(),
     mockSignInWithOtp: vi.fn(),
+    mockSignInWithPassword: vi.fn(),
     mockSignOut: vi.fn(),
     mockFrom: vi.fn(),
   }));
@@ -21,6 +22,7 @@ vi.mock("@/integrations/supabase/client", () => ({
       onAuthStateChange: mockOnAuthStateChange,
       getSession: mockGetSession,
       signInWithOtp: mockSignInWithOtp,
+      signInWithPassword: mockSignInWithPassword,
       signOut: mockSignOut,
     },
     from: mockFrom,
@@ -169,6 +171,44 @@ describe("signInWithMagicLink", () => {
     const { error } = await result.current.signInWithMagicLink("a@b.com");
     expect(error).toBeInstanceOf(Error);
     expect(error?.message).toBe("rate limited");
+  });
+});
+
+describe("signInWithPassword", () => {
+  it("calls supabase.auth.signInWithPassword with email and password", async () => {
+    mockSignInWithPassword.mockResolvedValue({ error: null });
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    await result.current.signInWithPassword("user@test.com", "s3cr3t");
+    expect(mockSignInWithPassword).toHaveBeenCalledWith({ email: "user@test.com", password: "s3cr3t" });
+  });
+
+  it("returns error: null on success", async () => {
+    mockSignInWithPassword.mockResolvedValue({ error: null });
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    const { error } = await result.current.signInWithPassword("user@test.com", "s3cr3t");
+    expect(error).toBeNull();
+  });
+
+  it("returns an Error instance when supabase returns an error", async () => {
+    mockSignInWithPassword.mockResolvedValue({ error: { message: "Invalid login credentials" } });
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    const { error } = await result.current.signInWithPassword("user@test.com", "wrong");
+    expect(error).toBeInstanceOf(Error);
+    expect(error?.message).toBe("Invalid login credentials");
+  });
+
+  it("does not log or persist the password", async () => {
+    mockSignInWithPassword.mockResolvedValue({ error: null });
+    const logSpy = vi.spyOn(console, "log");
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    await result.current.signInWithPassword("user@test.com", "s3cr3t");
+    expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining("s3cr3t"));
+    expect(localStorage.getItem("s3cr3t")).toBeNull();
+    logSpy.mockRestore();
   });
 });
 

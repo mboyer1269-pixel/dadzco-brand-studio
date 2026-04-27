@@ -9,6 +9,7 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   signInWithMagicLink: (email: string) => Promise<{ error: Error | null }>;
+  signInWithPassword: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -19,6 +20,7 @@ const defaultCtx: AuthContextType = {
   isLoading: true,
   isAuthenticated: false,
   signInWithMagicLink: async () => ({ error: new Error("AuthProvider not ready") }),
+  signInWithPassword: async () => ({ error: new Error("AuthProvider not ready") }),
   signOut: async () => {},
 };
 
@@ -84,12 +86,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error ? new Error(error.message) : null };
   };
 
+  const signInWithPassword = async (email: string, password: string) => {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    return { error: error ? new Error(error.message) : null };
+  };
+
   const signOut = async () => {
     await supabase.auth.signOut();
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, isAdmin, isLoading, isAuthenticated, signInWithMagicLink, signOut }}>
+    <AuthContext.Provider value={{ user, session, isAdmin, isLoading, isAuthenticated, signInWithMagicLink, signInWithPassword, signOut }}>
       {children}
     </AuthContext.Provider>
   );
