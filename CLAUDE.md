@@ -59,10 +59,15 @@ an Edge Function is explicitly part of the plan.
 In a Vite SPA, only two keys exist:
 
   VITE_SUPABASE_URL         → public, safe to bundle
-  VITE_SUPABASE_ANON_KEY    → public, safe to bundle
+  VITE_SUPABASE_PUBLISHABLE_KEY
+                            → public anon/publishable key, safe to bundle
                               but RLS must be the only guard
 
   SUPABASE_SERVICE_ROLE_KEY → Edge Functions only, never in src/
+
+Production project ref: strthzrvmoeyvuindugk.
+Local Supabase CLI metadata under supabase/.temp may point to staging and must
+not be committed or treated as production source of truth.
 
 RLS is not optional. It is the primary security boundary.
 Every table that is readable by the anon role must have an

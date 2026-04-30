@@ -30,11 +30,30 @@ npm run dev
 
 ## Variables d'environnement
 
+Production Supabase project:
+
 ```
-VITE_SUPABASE_URL=
-VITE_SUPABASE_PUBLISHABLE_KEY=
-VITE_SITE_URL=https://your-production-domain.com
+Dadzco
+project ref: strthzrvmoeyvuindugk
+URL: https://strthzrvmoeyvuindugk.supabase.co
 ```
+
+The repository config is production-bound by default. Local Supabase CLI
+metadata under `supabase/.temp/` may point to a staging project and must not be
+committed or used as the source of truth for production deploys.
+
+Client (safe to bundle):
+
+```
+VITE_SUPABASE_URL=https://strthzrvmoeyvuindugk.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=your-publishable-key-here
+VITE_SITE_URL=https://dadzco-brand-studio.vercel.app
+```
+
+`VITE_SUPABASE_PUBLISHABLE_KEY` is the public browser key used by the React SPA.
+Never put `SUPABASE_SERVICE_ROLE_KEY` or provider API keys in `VITE_` variables.
+Use [.env.example](.env.example) for safe local placeholders. Keep real `.env`
+files untracked.
 
 `VITE_SITE_URL` must be set in Vercel (and any other deployment environment).
 Without it, magic link emails embed `window.location.origin` as the redirect URL,
@@ -55,3 +74,14 @@ In the Supabase Dashboard → Authentication → URL Configuration, set:
 ### Admin email/password login
 
 Admin users must have a password set in Supabase Dashboard → Authentication → Users before using email/password login.
+
+## Edge function secrets (server-only)
+
+The `ai-route` edge function requires provider API keys that must never
+be bundled into the client. Template and checklist:
+
+- Secret template: [supabase/functions/.env.example](supabase/functions/.env.example)
+- Deploy & smoke-test checklist: [docs/AI_ROUTE_SETUP.md](docs/AI_ROUTE_SETUP.md)
+
+Required secrets (set in Supabase Dashboard → Edge Functions → Secrets):
+`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`.
