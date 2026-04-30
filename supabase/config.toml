@@ -16,7 +16,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.generate-mockup]
-verify_jwt = false
+verify_jwt = true
 
 [functions.save-collection]
 verify_jwt = true
