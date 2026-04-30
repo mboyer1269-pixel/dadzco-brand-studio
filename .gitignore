@@ -10,6 +10,8 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+.env
+.env.local
 *.local
 
 # Editor directories and files
@@ -27,3 +29,10 @@ supabase/.temp/
 
 # Test coverage output
 coverage/
+
+# Edge function local secrets — never commit real provider keys.
+# The tracked template is supabase/functions/.env.example.
+supabase/functions/.env
+supabase/functions/.env.local
+supabase/functions/*/.env
+supabase/functions/*/.env.local
