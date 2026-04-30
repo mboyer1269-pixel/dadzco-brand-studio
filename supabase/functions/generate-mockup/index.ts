@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.97.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,15 +7,55 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
-  const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-
   try {
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return json({ error: "Unauthorized" }, 401);
+    }
+
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SERVICE_ROLE_KEY) {
+      throw new Error("Supabase environment not configured");
+    }
+
+    const anonClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claimsData, error: claimsErr } =
+      await anonClient.auth.getClaims(token);
+    if (claimsErr || !claimsData?.claims?.sub) {
+      return json({ error: "Unauthorized" }, 401);
+    }
+    const adminUserId = claimsData.claims.sub as string;
+
+    const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+
+    const { data: roleRow } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", adminUserId)
+      .eq("role", "admin")
+      .maybeSingle();
+
+    if (!roleRow) {
+      return json({ error: "Forbidden — admin role required" }, 403);
+    }
+
     const { prompt, skuName, production, collectionId, skuId, margin_pct, negative_space_pct } = await req.json();
 
     const isProduction = production === true;
@@ -26,18 +66,14 @@ serve(async (req) => {
       const safeName = skuName || "SKU";
       const placeholderUrl = `https://placehold.co/1024x1024/1a1a2e/ffffff?text=CONCEPT+ONLY%0A${encodeURIComponent(safeName)}`;
 
-      let supabase: any = null;
-      if (SUPABASE_URL && SERVICE_ROLE_KEY) {
-        supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
-        await supabase.from("ai_generation_logs").insert({
-          task_type: "mockup_preview",
-          model_provider: "stub",
-          model_used: "placeholder",
-          status: "success",
-          collection_id: collectionId || null,
-          metadata: { skuName: safeName, skuId, prompt: safePrompt.slice(0, 200) },
-        }).catch(() => {});
-      }
+      await supabase.from("ai_generation_logs").insert({
+        task_type: "mockup_preview",
+        model_provider: "stub",
+        model_used: "placeholder",
+        status: "success",
+        collection_id: collectionId || null,
+        metadata: { skuName: safeName, skuId, prompt: safePrompt.slice(0, 200) },
+      }).catch(() => {});
 
       return new Response(
         JSON.stringify({
@@ -98,24 +134,17 @@ serve(async (req) => {
 
     console.log(`Mockup request: ${skuName || "unknown"}, production=true`);
 
-    let supabase: any = null;
-    if (SUPABASE_URL && SERVICE_ROLE_KEY) {
-      supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
-    }
-
     // ── Production path: Leonardo ──
     let jobId: string | null = null;
-    if (supabase) {
-      const { data: job } = await supabase.from("production_jobs").insert({
-        collection_id: collectionId || null,
-        sku_id: skuId || skuName || null,
-        provider: "leonardo",
-        model_id: "aa77f04e-3eec-4034-9c07-d0f619684628",
-        status: "started",
-        started_at: new Date().toISOString(),
-      }).select("id").single();
-      jobId = job?.id || null;
-    }
+    const { data: job } = await supabase.from("production_jobs").insert({
+      collection_id: collectionId || null,
+      sku_id: skuId || skuName || null,
+      provider: "leonardo",
+      model_id: "aa77f04e-3eec-4034-9c07-d0f619684628",
+      status: "started",
+      started_at: new Date().toISOString(),
+    }).select("id").single();
+    jobId = job?.id || null;
 
     const LEONARDO_BASE = "https://cloud.leonardo.ai/api/rest/v1";
     const fullPrompt = `Professional apparel product mockup, clean white background, premium quality photo. ${prompt}. Studio lighting, e-commerce ready, high resolution, no text overlays.`;
@@ -138,7 +167,7 @@ serve(async (req) => {
     if (!createRes.ok) {
       const errText = await createRes.text();
       console.error("Leonardo create error:", createRes.status, errText);
-      if (supabase && jobId) {
+      if (jobId) {
         await supabase.from("production_jobs")
           .update({ status: "failed", error_message: errText, completed_at: new Date().toISOString() })
           .eq("id", jobId);
@@ -153,7 +182,7 @@ serve(async (req) => {
     const generationId = createData.sdGenerationJob?.generationId;
     if (!generationId) {
       const msg = "Failed to start Leonardo generation";
-      if (supabase && jobId) {
+      if (jobId) {
         await supabase.from("production_jobs").update({ status: "failed", error_message: msg, completed_at: new Date().toISOString() }).eq("id", jobId);
       }
       return new Response(JSON.stringify({ ok: false, mode: "production", error: msg, imageUrl: null }), {
@@ -180,7 +209,7 @@ serve(async (req) => {
         break;
       } else if (status === "FAILED") {
         const msg = "Leonardo generation failed";
-        if (supabase && jobId) {
+        if (jobId) {
           await supabase.from("production_jobs").update({ status: "failed", error_message: msg, completed_at: new Date().toISOString() }).eq("id", jobId);
         }
         return new Response(JSON.stringify({ ok: false, mode: "production", error: msg, imageUrl: null }), {
@@ -192,7 +221,7 @@ serve(async (req) => {
 
     if (!imageUrl) {
       const msg = "Generation timed out after 90s";
-      if (supabase && jobId) {
+      if (jobId) {
         await supabase.from("production_jobs").update({ status: "timeout", error_message: msg, completed_at: new Date().toISOString() }).eq("id", jobId);
       }
       return new Response(JSON.stringify({ ok: false, mode: "production", error: msg, imageUrl: null }), {
@@ -200,7 +229,7 @@ serve(async (req) => {
       });
     }
 
-    if (supabase && jobId) {
+    if (jobId) {
       await supabase.from("production_jobs").update({
         status: "completed", image_url: imageUrl, completed_at: new Date().toISOString(),
       }).eq("id", jobId);
