@@ -19,7 +19,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.save-collection]
-verify_jwt = false
+verify_jwt = true
 
 [functions.ai-gateway]
 verify_jwt = false
