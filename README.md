@@ -77,11 +77,15 @@ Admin users must have a password set in Supabase Dashboard → Authentication �
 
 ## Edge function secrets (server-only)
 
-The `ai-route` edge function requires provider API keys that must never
-be bundled into the client. Template and checklist:
+Edge Functions require server-only secrets that must never be bundled into the
+client. Template and checklist:
 
 - Secret template: [supabase/functions/.env.example](supabase/functions/.env.example)
 - Deploy & smoke-test checklist: [docs/AI_ROUTE_SETUP.md](docs/AI_ROUTE_SETUP.md)
 
 Required secrets (set in Supabase Dashboard → Edge Functions → Secrets):
-`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`.
+`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `CHECK_GATES_INTERNAL_SECRET`.
+
+`CHECK_GATES_INTERNAL_SECRET` protects the internal `check-gates` function and
+must be sent by scheduled/internal callers through the `x-internal-secret`
+header. Do not add a real value to this repository.
