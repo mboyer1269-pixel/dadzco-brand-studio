@@ -7,6 +7,12 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+
 const SCORING_PROMPT = `Tu es le système de scoring DADZCO Brand OS V2. Analyse cette collection et retourne un score JSON strict.
 
 CRITÈRES (chaque score de 0 à 100) :
@@ -65,14 +71,25 @@ serve(async (req) => {
   }
 
   try {
-    await authenticateRequest(req);
-
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const adminUserId = await authenticateRequest(req);
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+
+    const { data: roleRow } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", adminUserId)
+      .eq("role", "admin")
+      .maybeSingle();
+
+    if (!roleRow) {
+      return json({ error: "Forbidden — admin role required" }, 403);
+    }
+
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
-    const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
     const { collectionId, collectionData } = await req.json();
 
     if (!collectionId && !collectionData) {
@@ -90,7 +107,7 @@ serve(async (req) => {
       collection = data;
     }
 
-    // Fetch brand_rules for the authenticated user to inject as constraints
+    // Fetch the latest locked Brand Book constraints for scoring context.
     const { data: brandRulesData } = await supabase
       .from("brand_rules")
       .select("palette, typography, rules, forbidden_keywords")
@@ -160,9 +177,10 @@ serve(async (req) => {
   } catch (e) {
     console.error("Scoring error:", e);
     const isAuth = e instanceof Error && e.message === "Unauthorized";
-    return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
-      { status: isAuth ? 401 : 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    if (isAuth) {
+      return json({ error: "Unauthorized" }, 401);
+    }
+
+    return json({ error: e instanceof Error ? e.message : "Unknown error" }, 500);
   }
 });
