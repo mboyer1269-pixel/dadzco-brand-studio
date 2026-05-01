@@ -28,7 +28,7 @@ verify_jwt = false
 verify_jwt = true
 
 [functions.lifecycle-gate]
-verify_jwt = false
+verify_jwt = true
 
 [functions.approve-hq]
 verify_jwt = true
