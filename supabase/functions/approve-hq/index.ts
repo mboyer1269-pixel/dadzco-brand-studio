@@ -42,6 +42,20 @@ serve(async (req) => {
     const userId = userData.user.id;
 
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+
+    const { data: roleRow } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId)
+      .eq("role", "admin")
+      .maybeSingle();
+
+    if (!roleRow) {
+      return new Response(JSON.stringify({ error: "Forbidden — admin role required" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { collectionId } = await req.json();
     if (!collectionId) {
       return new Response(JSON.stringify({ error: "Missing collectionId" }), {
@@ -61,9 +75,8 @@ serve(async (req) => {
       });
     }
 
-    // FIX A: Ownership enforcement
     if (collection.user_id !== userId) {
-      return new Response(JSON.stringify({ error: "Forbidden" }), {
+      return new Response(JSON.stringify({ error: "Forbidden — collection ownership required" }), {
         status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
