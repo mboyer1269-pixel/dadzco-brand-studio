@@ -10,7 +10,7 @@ verify_jwt = true
 verify_jwt = false
 
 [functions.extract-brand-rules]
-verify_jwt = false
+verify_jwt = true
 
 [functions.round-table]
 verify_jwt = true

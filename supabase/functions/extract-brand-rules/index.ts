@@ -34,6 +34,39 @@ function ok200(body: Record<string, unknown>) {
   });
 }
 
+function unauthorized() {
+  return ok200({
+    ok: false,
+    fallbackUsed: false,
+    reason: "Unauthorized",
+    saved: false,
+    rulesLocked: false,
+    ruleCount: 0,
+  });
+}
+
+function forbidden() {
+  return ok200({
+    ok: false,
+    fallbackUsed: false,
+    reason: "Forbidden — admin role required",
+    saved: false,
+    rulesLocked: false,
+    ruleCount: 0,
+  });
+}
+
+function brandFileNotFound() {
+  return ok200({
+    ok: false,
+    fallbackUsed: false,
+    reason: "Brand file not found",
+    saved: false,
+    rulesLocked: false,
+    ruleCount: 0,
+  });
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -42,28 +75,71 @@ serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
 
-    if (!lovableApiKey) {
-      return ok200({ ok: false, reason: "LOVABLE_API_KEY not configured", fallbackUsed: false, details: null });
+    if (!authHeader?.startsWith("Bearer ")) {
+      return unauthorized();
     }
 
-    // Auth check
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const userClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authHeader || "" } },
+      global: { headers: { Authorization: authHeader } },
     });
-    const { data: { user }, error: authError } = await userClient.auth.getUser();
-    if (authError || !user) {
-      return ok200({ ok: false, reason: "Unauthorized – sign in with email first", fallbackUsed: false, details: null });
+    const token = authHeader.replace(/^Bearer\s+/i, "");
+    const { data: claimsData, error: authError } = await userClient.auth.getClaims(token);
+    const adminUserId = claimsData?.claims?.sub;
+    if (authError || !adminUserId) {
+      return unauthorized();
+    }
+
+    const adminClient = createClient(supabaseUrl, supabaseServiceKey);
+    const { data: roleRow } = await adminClient
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", adminUserId)
+      .eq("role", "admin")
+      .maybeSingle();
+
+    if (!roleRow) {
+      return forbidden();
     }
 
     const { brandFileId, storagePath, fileName } = await req.json();
     if (!brandFileId || !storagePath) {
-      return ok200({ ok: false, reason: "Missing brandFileId or storagePath", fallbackUsed: false, details: null });
+      return ok200({
+        ok: false,
+        reason: "Missing brandFileId or storagePath",
+        fallbackUsed: false,
+        saved: false,
+        rulesLocked: false,
+        ruleCount: 0,
+        details: null,
+      });
     }
 
-    const adminClient = createClient(supabaseUrl, supabaseServiceKey);
+    const { data: brandFile } = await adminClient
+      .from("brand_files")
+      .select("id")
+      .eq("id", brandFileId)
+      .eq("storage_path", storagePath)
+      .eq("user_id", adminUserId)
+      .maybeSingle();
+
+    if (!brandFile) {
+      return brandFileNotFound();
+    }
+
+    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
+    if (!lovableApiKey) {
+      return ok200({
+        ok: false,
+        reason: "LOVABLE_API_KEY not configured",
+        fallbackUsed: false,
+        saved: false,
+        rulesLocked: false,
+        ruleCount: 0,
+        details: null,
+      });
+    }
 
     // --- Attempt AI extraction ---
     let extracted: Record<string, unknown> | null = null;
@@ -163,7 +239,7 @@ Be thorough and specific. Return valid JSON only.`;
     const { data: existingRow } = await adminClient
       .from("brand_rules")
       .select("palette, rules, forbidden_keywords, typography, rules_locked")
-      .eq("user_id", user.id)
+      .eq("user_id", adminUserId)
       .maybeSingle();
 
     const existingPalette = existingRow?.palette;
@@ -189,7 +265,7 @@ Be thorough and specific. Return valid JSON only.`;
       : (extracted!.summary as string) || null;
 
     const { error: upsertError } = await adminClient.from("brand_rules").upsert({
-      user_id: user.id,
+      user_id: adminUserId,
       brand_file_id: brandFileId,
       category: (extracted!.category as string) || "general",
       rules: mergedRules,
@@ -227,6 +303,9 @@ Be thorough and specific. Return valid JSON only.`;
       ok: false,
       reason: e instanceof Error ? e.message : "Unknown error",
       fallbackUsed: true,
+      saved: false,
+      rulesLocked: false,
+      ruleCount: 0,
       details: null,
     });
   }
