@@ -16,6 +16,15 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Disabled intentionally until the export workflow is reviewed and aligned with lifecycle governance.
+  return new Response(
+    JSON.stringify({
+      error: "create-export-pack is disabled pending export workflow review",
+      disabled: true,
+    }),
+    { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
   const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
