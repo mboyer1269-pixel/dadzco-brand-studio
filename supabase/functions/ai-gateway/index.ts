@@ -221,6 +221,15 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Disabled intentionally until the AI routing strategy is reviewed and aligned with the approved ai-route direction.
+  return new Response(
+    JSON.stringify({
+      error: "ai-gateway is disabled pending AI routing strategy review",
+      disabled: true,
+    }),
+    { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+
   try {
     // Authenticate and get verified userId
     const verifiedUserId = await authenticateRequest(req);
