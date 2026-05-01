@@ -5,6 +5,16 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Upload, FileText, Palette, Shield, CheckCircle2, AlertTriangle, BookOpen, Lock, Eye, Trash2, Loader2, Sparkles, Type, Ban, RotateCcw } from "lucide-react";
 import { FileThumbnail, FilePreviewButton } from "@/components/brand/FilePreview";
 import { supabase } from "@/integrations/supabase/client";
@@ -116,6 +126,7 @@ export default function BrandBook() {
   const inputRef = useRef<HTMLInputElement>(null);
   const progressRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [failedFileId, setFailedFileId] = useState<string | null>(null);
+  const [filePendingDelete, setFilePendingDelete] = useState<BrandFile | null>(null);
 
   const fetchFiles = useCallback(async () => {
     try {
@@ -315,6 +326,12 @@ export default function BrandBook() {
     }
   };
 
+  const confirmDeleteFile = () => {
+    if (!filePendingDelete) return;
+    void deleteFile(filePendingDelete);
+    setFilePendingDelete(null);
+  };
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
@@ -343,6 +360,30 @@ export default function BrandBook() {
 
   return (
     <AppLayout>
+      <AlertDialog
+        open={!!filePendingDelete}
+        onOpenChange={(open) => {
+          if (!open) setFilePendingDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Brand Book file?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove "{filePendingDelete?.file_name}" from the Brand Book hub. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={confirmDeleteFile}
+            >
+              Confirm delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <div className="max-w-6xl mx-auto space-y-8">
         {/* Header */}
         <div className="gradient-header rounded-lg p-6 md:p-8">
@@ -454,8 +495,10 @@ export default function BrandBook() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          aria-label={`Delete Brand Book file ${file.file_name}`}
+                          title={`Delete ${file.file_name}`}
                           className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-destructive/70 hover:text-destructive"
-                          onClick={(e) => { e.stopPropagation(); deleteFile(file); }}
+                          onClick={(e) => { e.stopPropagation(); setFilePendingDelete(file); }}
                         >
                           <Trash2 className="h-3 w-3" />
                         </Button>
