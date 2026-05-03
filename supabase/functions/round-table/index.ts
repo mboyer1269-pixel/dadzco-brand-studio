@@ -382,9 +382,6 @@ serve(async (req) => {
       return json({ error: "Forbidden — admin role required" }, 403);
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
-
     let body: Record<string, unknown> = {};
     try { body = await req.json(); } catch { /* empty body ok */ }
 
@@ -401,6 +398,9 @@ serve(async (req) => {
     const isChap = taskType === "chap";
 
     if (isChap) {
+      const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+      if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+
       // CHAP mode — use flash model
       const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
@@ -450,77 +450,63 @@ serve(async (req) => {
 
     const userPrompt = buildUserPrompt(idea, count, mode, theme);
 
-    // Use GPT-5 for strategy+production, with Gemini Pro fallback
-    let aiResponse: Response;
-    let usedModel = "openai/gpt-5";
-    let fallbackUsed = false;
-
-    aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    // Route collection generation through ai-route and forward the caller JWT.
+    const aiRouteResponse = await fetch(`${SUPABASE_URL}/functions/v1/ai-route`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: authHeader,
+        apikey: SUPABASE_ANON_KEY,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "openai/gpt-5",
+        taskType: "structured_task",
         messages: [
           { role: "system", content: ROUND_TABLE_SYSTEM },
           { role: "user", content: userPrompt },
         ],
-        temperature: 0.7,
-        max_tokens: 12000,
-        response_format: { type: "json_object" },
-      }),
-    });
-
-    // Fallback to Gemini Pro if GPT-5 fails
-    if (!aiResponse.ok && aiResponse.status !== 429) {
-      console.log("GPT-5 failed, falling back to Gemini 2.5 Pro");
-      fallbackUsed = true;
-      usedModel = "google/gemini-2.5-pro";
-      aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-pro",
-          messages: [
-            { role: "system", content: ROUND_TABLE_SYSTEM },
-            { role: "user", content: userPrompt },
-          ],
+        options: {
           temperature: 0.7,
           max_tokens: 12000,
           response_format: { type: "json_object" },
-        }),
-      });
+        },
+      }),
+    });
+
+    const aiRouteText = await aiRouteResponse.text();
+    let aiRouteData: Record<string, unknown>;
+    try {
+      aiRouteData = JSON.parse(aiRouteText);
+    } catch {
+      console.error("ai-route response not JSON:", aiRouteText.slice(0, 500));
+      throw new Error("ai-route response was not valid JSON");
     }
 
-    if (!aiResponse.ok) {
-      const errText = await aiResponse.text();
-      console.error("AI gateway error:", aiResponse.status, errText);
-      if (aiResponse.status === 429) {
+    if (!aiRouteResponse.ok) {
+      const providerStatus =
+        typeof aiRouteData.status === "number" ? aiRouteData.status : aiRouteResponse.status;
+      console.error("ai-route error:", aiRouteResponse.status, aiRouteData);
+
+      if (providerStatus === 429) {
         return new Response(JSON.stringify({ error: "Rate limit exceeded. Réessayez dans quelques secondes." }), {
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      if (aiResponse.status === 402) {
+      if (providerStatus === 402) {
         return new Response(JSON.stringify({ error: "Credits insuffisants. Ajoutez des crédits dans Settings → Workspace → Usage." }), {
           status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      throw new Error(`AI gateway error: ${aiResponse.status}`);
+
+      const routeError =
+        typeof aiRouteData.error === "string" ? aiRouteData.error : "ai-route request failed";
+      throw new Error(routeError);
     }
 
-    const rawText = await aiResponse.text();
-    let data;
-    try { data = JSON.parse(rawText); } catch {
-      console.error("Gateway response not JSON:", rawText.slice(0, 500));
-      throw new Error("Gateway response was not valid JSON");
-    }
-
-    const content = data.choices?.[0]?.message?.content || "";
+    const content = typeof aiRouteData.result === "string" ? aiRouteData.result : "";
+    const usedProvider = typeof aiRouteData.provider === "string" ? aiRouteData.provider : "ai-route";
+    const usedRouteModel = typeof aiRouteData.model === "string" ? aiRouteData.model : "unknown";
+    const usedModel = `${usedProvider}/${usedRouteModel}`;
+    const fallbackUsed = false;
     if (!content) throw new Error("AI returned empty content");
 
     let parsed;
