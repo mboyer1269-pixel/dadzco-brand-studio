@@ -73,7 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [user?.id]);
+  }, [user]);
 
   const signInWithMagicLink = async (email: string) => {
     // Prefer an explicit production URL so magic links never redirect to a
