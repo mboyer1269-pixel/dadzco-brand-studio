@@ -13,7 +13,12 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "html", "lcov"],
       include: ["src/**/*.{ts,tsx}"],
+      // A custom exclude list replaces Vitest's defaults, so test files must be
+      // excluded explicitly or they inflate business-logic coverage.
       exclude: [
+        "**/*.test.{ts,tsx}",
+        "**/*.spec.{ts,tsx}",
+        "**/__tests__/**",
         "src/integrations/supabase/types.ts",
         "src/vite-env.d.ts",
         "src/components/**",  // UI components — covered by E2E/integration tests

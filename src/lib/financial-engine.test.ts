@@ -74,10 +74,10 @@ describe("simulateScenario", () => {
       aov: 200,
     };
     const result = simulateScenario(params, "paid_only");
-    if (result.breakEvenMonth !== null) {
-      const proj = result.projections[result.breakEvenMonth - 1];
-      expect(proj.cumulativeProfit).toBeGreaterThanOrEqual(0);
-    }
+    // These params are chosen to guarantee break-even — a null here is a regression.
+    expect(result.breakEvenMonth).not.toBeNull();
+    const proj = result.projections[result.breakEvenMonth! - 1];
+    expect(proj.cumulativeProfit).toBeGreaterThanOrEqual(0);
   });
 
   it("breakEvenMonth is null when cumulative profit never turns positive", () => {

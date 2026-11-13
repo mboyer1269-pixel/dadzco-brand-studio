@@ -13,11 +13,11 @@ const config = readFileSync(
 );
 
 describe("auth-ping auth hardening", () => {
-  it("enables platform JWT verification only for auth-ping", () => {
+  it("enables platform JWT verification for auth-ping without touching check-gates", () => {
     expect(config).toMatch(/\[functions\.auth-ping\]\s+verify_jwt = true/);
     expect(config).toMatch(/\[functions\.check-gates\]\s+verify_jwt = false/);
-    expect(config).toMatch(/\[functions\.create-export-pack\]\s+verify_jwt = false/);
-    expect(config).toMatch(/\[functions\.ai-gateway\]\s+verify_jwt = false/);
+    // check-gates (internal secret) is the only remaining verify_jwt = false function.
+    expect(config.match(/verify_jwt = false/g)).toHaveLength(1);
   });
 
   it("keeps the existing in-function Authorization validation", () => {
