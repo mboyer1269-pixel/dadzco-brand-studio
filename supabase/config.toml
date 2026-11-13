@@ -21,9 +21,6 @@ verify_jwt = true
 [functions.save-collection]
 verify_jwt = true
 
-[functions.ai-gateway]
-verify_jwt = false
-
 [functions.score-collection]
 verify_jwt = true
 
@@ -34,7 +31,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.create-export-pack]
-verify_jwt = false
+verify_jwt = true
 
 [functions.auth-ping]
 verify_jwt = true

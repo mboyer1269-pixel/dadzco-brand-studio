@@ -10,18 +10,21 @@ before privileged work can run.
 | Function | verify_jwt | Current state | Protection model | Why false is intentional | Before changing |
 |---|---:|---|---|---|---|
 | check-gates | false | Internal/scheduled | x-internal-secret + CHECK_GATES_INTERNAL_SECRET | Scheduled/internal jobs do not use user JWTs | Keep/rotate secret; configure scheduler intentionally |
-| create-export-pack | false | Disabled/no-op | Immediate 503 before privileged work | Export flow is not reviewed; function returns before service-role/export/lifecycle work | Design export flow, ownership/admin model, lifecycle path |
-| ai-gateway | false | Disabled/no-op | Immediate 503 before provider/service-role/logging work | AI routing strategy is not reviewed; function returns before provider calls/log writes | Decide ai-route vs ai-gateway strategy, provider model, logging/rate limits |
+
+## Resolved entries (fix/v1-launch-readiness)
+
+| Function | verify_jwt | State | Protection model |
+|---|---:|---|---|
+| create-export-pack | true | Re-enabled | Platform JWT + `requireUserSession` + `requireAdmin` (`_shared/auth.ts`), collection ownership, all 3 seals approved. Never writes `lifecycle_status` / `status` — lifecycle transitions stay in `lifecycle-gate`. |
+| ai-gateway | — | Removed | Function, config entry, and dead client module (`src/lib/ai-gateway.ts`) deleted. All AI routing goes through `ai-route`. Run `supabase functions delete ai-gateway --project-ref strthzrvmoeyvuindugk` to remove the deployed copy. |
 
 ## Guardrails
 
 - `check-gates` must not be invoked without `x-internal-secret`.
 - `CHECK_GATES_INTERNAL_SECRET` must be configured as a Supabase Edge Function
   secret before any scheduled or internal `check-gates` invocation.
-- `create-export-pack` must not be re-enabled until the export workflow,
-  ownership/admin model, and lifecycle path are reviewed.
-- `ai-gateway` must not be re-enabled until the AI routing strategy, provider
-  model, logging, and rate limits are reviewed.
+- `create-export-pack` must keep auth + admin checks before reading the request
+  body, and must keep the 3-seal gate before any write.
 - Future changes to these states require a focused PR with tests.
 
 ## Review Checklist For Future Changes

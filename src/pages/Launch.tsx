@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
-import { Rocket } from "lucide-react";
+import { AlertTriangle, RefreshCw, Rocket } from "lucide-react";
 import { LaunchChecklist } from "@/components/launch/LaunchChecklist";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 interface Collection {
   id: string;
@@ -13,21 +14,42 @@ export default function Launch() {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
   const [collectionsLoading, setCollectionsLoading] = useState(true);
+  const [collectionsError, setCollectionsError] = useState<string | null>(null);
+
+  const loadCollections = useCallback(async () => {
+    setCollectionsLoading(true);
+    setCollectionsError(null);
+    try {
+      const { data, error } = await supabase
+        .from("collections")
+        .select("id, name")
+        .neq("lifecycle_status", "idea")
+        .neq("lifecycle_status", "exported")
+        .order("name");
+
+      // A failed query must never collapse into the "no active collections" empty state.
+      if (error) throw error;
+
+      const cols = (data || []) as Collection[];
+      setCollections(cols);
+      if (cols.length === 1) setSelectedCollectionId(cols[0].id);
+    } catch (err) {
+      console.error("Launch collections load error:", err);
+      // PostgrestError is a plain object in some supabase-js versions, not an Error instance.
+      const message =
+        typeof (err as { message?: unknown })?.message === "string"
+          ? (err as { message: string }).message
+          : "Erreur inconnue";
+      setCollectionsError(message);
+      toast.error("Impossible de charger les collections.");
+    } finally {
+      setCollectionsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    supabase
-      .from("collections")
-      .select("id, name")
-      .neq("lifecycle_status", "idea")
-      .neq("lifecycle_status", "exported")
-      .order("name")
-      .then(({ data }) => {
-        const cols = (data || []) as Collection[];
-        setCollections(cols);
-        if (cols.length === 1) setSelectedCollectionId(cols[0].id);
-      })
-      .finally(() => setCollectionsLoading(false));
-  }, []);
+    loadCollections();
+  }, [loadCollections]);
 
   return (
     <AppLayout>
@@ -61,7 +83,28 @@ export default function Launch() {
               </option>
             ))}
           </select>
-          {!collectionsLoading && collections.length === 0 && (
+          {!collectionsLoading && collectionsError && (
+            <div
+              role="alert"
+              className="flex items-center justify-between gap-3 rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <AlertTriangle className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
+                <p className="text-xs text-red-600 font-body truncate">
+                  Erreur de chargement des collections — {collectionsError}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={loadCollections}
+                className="flex items-center gap-1 text-[10px] font-body font-medium text-red-600 hover:underline flex-shrink-0"
+              >
+                <RefreshCw className="h-3 w-3" />
+                Réessayer
+              </button>
+            </div>
+          )}
+          {!collectionsLoading && !collectionsError && collections.length === 0 && (
             <p className="text-xs text-muted-foreground font-body">
               Aucune collection active trouvée.
             </p>

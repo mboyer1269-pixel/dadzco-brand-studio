@@ -6,10 +6,16 @@ This function routes exactly two task types to paid providers:
 | Task type         | Provider  | Model                         |
 |-------------------|-----------|-------------------------------|
 | `structured_task` | OpenAI    | `gpt-4.1`                     |
-| `brand_review`    | Anthropic | `claude-sonnet-4-20250514`    |
+| `brand_review`    | Anthropic | `claude-sonnet-4-6`           |
 
-Out of scope for this setup: Gemini, fallback routing, batch runs,
-client-side provider selection, frontend callers.
+`structured_task` has one fallback: if OpenAI fails with anything other than
+a `400` (timeout after 60s, network error, `429`, `5xx`, auth/config error),
+the same request is retried on **Gemini `gemini-2.5-pro`** through Google's
+OpenAI-compatible endpoint. A `400` is surfaced as-is (the request itself is
+invalid). `brand_review` has no fallback.
+
+Out of scope for this setup: batch runs, client-side provider selection,
+frontend callers.
 
 ---
 
@@ -21,12 +27,14 @@ Secrets**, or via CLI:
 ```bash
 supabase secrets set OPENAI_API_KEY=sk-...   --project-ref strthzrvmoeyvuindugk
 supabase secrets set ANTHROPIC_API_KEY=sk-ant-... --project-ref strthzrvmoeyvuindugk
+supabase secrets set GEMINI_API_KEY=...       --project-ref strthzrvmoeyvuindugk
 ```
 
-| Secret name         | Source                | Purpose                       |
-|---------------------|-----------------------|-------------------------------|
-| `OPENAI_API_KEY`    | platform.openai.com   | `structured_task` calls       |
-| `ANTHROPIC_API_KEY` | console.anthropic.com | `brand_review` calls          |
+| Secret name         | Source                | Purpose                                   |
+|---------------------|-----------------------|-------------------------------------------|
+| `OPENAI_API_KEY`    | platform.openai.com   | `structured_task` calls (primary)         |
+| `ANTHROPIC_API_KEY` | console.anthropic.com | `brand_review` calls                      |
+| `GEMINI_API_KEY`    | aistudio.google.com   | `structured_task` fallback (optional — fallback is inactive until set) |
 
 Auto-injected by Supabase (do not set manually):
 `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`.
@@ -89,7 +97,14 @@ curl -sS -X POST "https://strthzrvmoeyvuindugk.supabase.co/functions/v1/ai-route
 ```
 
 Expect: `200` with
-`{ "success": true, "provider": "openai", "model": "gpt-4.1", "result": "..." }`.
+`{ "success": true, "provider": "openai", "model": "gpt-4.1", "result": "...", "fallback_used": false }`.
+
+If OpenAI failed and Gemini answered:
+`{ "success": true, "provider": "gemini", "model": "gemini-2.5-pro", "result": "...", "fallback_used": true, "fallback_from": "openai" }`.
+
+If both fail: `502` with
+`{ "error": "All providers failed for structured_task", "status": <openai status|null>, "fallback_status": <gemini status|null> }`.
+`status` stays the OpenAI status so round-table keeps its 429 / 402 messages.
 
 ### 4.2 `brand_review` → Anthropic
 
@@ -106,7 +121,7 @@ curl -sS -X POST "https://strthzrvmoeyvuindugk.supabase.co/functions/v1/ai-route
 ```
 
 Expect: `200` with
-`{ "success": true, "provider": "anthropic", "model": "claude-sonnet-4-20250514", "result": "..." }`.
+`{ "success": true, "provider": "anthropic", "model": "claude-sonnet-4-6", "result": "..." }`.
 
 ### 4.3 Negative checks (should fail as documented)
 
@@ -136,9 +151,8 @@ calls paid providers and must stay gated.
 
 ## 6. What is deliberately not in this setup
 
-- Gemini provider
-- Fallback routing between providers
+- Fallback for `brand_review` (only `structured_task` falls back, to Gemini)
 - Batch engine
 - Client-side provider selection (secrets stay server-only)
 - Frontend integration (no existing caller uses `ai-route` yet)
-- Logging into `ai_generation_logs` (ai-gateway handles that for its own flows)
+- Logging into `ai_generation_logs` (the former ai-gateway logged there; it has been removed — logging is a follow-up)

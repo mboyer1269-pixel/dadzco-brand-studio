@@ -506,7 +506,8 @@ serve(async (req) => {
     const usedProvider = typeof aiRouteData.provider === "string" ? aiRouteData.provider : "ai-route";
     const usedRouteModel = typeof aiRouteData.model === "string" ? aiRouteData.model : "unknown";
     const usedModel = `${usedProvider}/${usedRouteModel}`;
-    const fallbackUsed = false;
+    // ai-route reports when OpenAI failed and Gemini served the request.
+    const fallbackUsed = aiRouteData.fallback_used === true;
     if (!content) throw new Error("AI returned empty content");
 
     let parsed;
